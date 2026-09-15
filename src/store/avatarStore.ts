@@ -1,0 +1,47 @@
+import { create } from 'zustand'
+import * as THREE from 'three'
+
+import { FacialAnimationEngine } from '../avatar/FacialAnimationEngine'
+import { HeadPoseController } from '../avatar/HeadPoseController'
+
+interface AvatarStore {
+  scene: THREE.Object3D | null
+
+  engine: FacialAnimationEngine | null
+
+  headPose: HeadPoseController | null
+
+  setScene: (scene: THREE.Object3D) => void
+
+  setEngine: (
+    engine: FacialAnimationEngine
+  ) => void
+
+  setHeadPose: (
+    headPose: HeadPoseController
+  ) => void
+}
+
+export const useAvatarStore =
+  create<AvatarStore>((set) => ({
+    scene: null,
+
+    engine: null,
+
+    headPose: null,
+
+    setScene: (scene) =>
+      set({
+        scene,
+      }),
+
+    setEngine: (engine) =>
+      set({
+        engine,
+      }),
+
+    setHeadPose: (headPose) =>
+      set({
+        headPose,
+      }),
+  }))
