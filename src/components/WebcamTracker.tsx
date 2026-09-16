@@ -12,6 +12,8 @@ export default function WebcamTracker() {
   const animationFrameRef = useRef<number | null>(null);
 
   const lastVideoTimeRef = useRef(-1);
+  const lastDetectionTimeRef = useRef(0);
+  const detectionInterval = 50;
 
   // Prevent logging the head matrix every frame
   const headMatrixLoggedRef = useRef(false);
@@ -175,10 +177,17 @@ export default function WebcamTracker() {
         }
 
         if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-          if (video.currentTime !== lastVideoTimeRef.current) {
+          const now = performance.now();
+
+          if (
+            video.currentTime !== lastVideoTimeRef.current &&
+            now - lastDetectionTimeRef.current >= detectionInterval
+          ) {
             lastVideoTimeRef.current = video.currentTime;
 
-            const result = landmarker.detectForVideo(video, performance.now());
+            lastDetectionTimeRef.current = now;
+
+            const result = landmarker.detectForVideo(video, now);
 
             const hasFace = result.faceLandmarks.length > 0;
 
@@ -298,7 +307,7 @@ export default function WebcamTracker() {
         bottom-6
         left-5
         z-30
-        w-44
+        w-64
         overflow-hidden
         rounded-xl
         border

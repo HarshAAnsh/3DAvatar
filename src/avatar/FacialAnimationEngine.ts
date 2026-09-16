@@ -1,12 +1,7 @@
 import * as THREE from 'three'
 
-import {
-  BlendshapeController,
-} from './BlendshapeController'
-
-import {
-  ARKIT_TO_AVATAR,
-} from './BlendshapeMapper'
+import { BlendshapeController } from './BlendshapeController'
+import { ARKIT_TO_AVATAR } from './BlendshapeMapper'
 
 export type AnimationSource =
   | 'debugger'
@@ -17,10 +12,7 @@ export type AnimationSource =
 export class FacialAnimationEngine {
   private controller: BlendshapeController
 
-  private currentValues: Record<
-    string,
-    number
-  > = {}
+  private currentValues: Record<string, number> = {}
 
   private sourceValues: Record<
     AnimationSource,
@@ -34,17 +26,49 @@ export class FacialAnimationEngine {
 
   private smoothing = 0.18
 
+  /**
+   * Blendshapes that belong to speech/lip animation.
+   *
+   * When TTS is active, these should not be overridden
+   * by MediaPipe.
+   */
+  private readonly ttsBlendshapes = new Set([
+    'jawOpen',
+    'mouthFunnel',
+    'mouthPucker',
+    'mouthClose',
+    'mouthSmile_L',
+    'mouthSmile_R',
+    'mouthFrown_L',
+    'mouthFrown_R',
+    'mouthDimple_L',
+    'mouthDimple_R',
+    'mouthStretch_L',
+    'mouthStretch_R',
+    'mouthRollLower',
+    'mouthRollUpper',
+    'mouthShrugLower',
+    'mouthShrugUpper',
+    'mouthPress_L',
+    'mouthPress_R',
+    'mouthLowerDown_L',
+    'mouthLowerDown_R',
+    'mouthUpperUp_L',
+    'mouthUpperUp_R',
+  ])
+
   constructor(scene: THREE.Object3D) {
     this.controller =
       new BlendshapeController(scene)
   }
 
   setSmoothing(value: number) {
-    this.smoothing = THREE.MathUtils.clamp(
-      value,
-      0.01,
-      1
-    )
+    this.smoothing =
+      THREE.MathUtils.clamp(
+        value,
+        0.01,
+        1
+      )
   }
 
   setARKitBlendshape(
@@ -57,9 +81,8 @@ export class FacialAnimationEngine {
 
     if (!avatarName) {
       console.warn(
-        `No avatar mapping for ${arkitName}`
+        `[FacialAnimationEngine] No mapping for ${arkitName}`
       )
-
       return
     }
 
@@ -95,119 +118,120 @@ export class FacialAnimationEngine {
       )
   }
 
- update() {
-  const combinedTargets: Record<
-    string,
-    number
-  > = {}
+  /**
+   * Decide which animation source owns a specific
+   * blendshape for the current frame.
+   */
+  private getTargetValue(
+    name: string
+  ): number | undefined {
 
-  // --------------------------------------------------
-  // Determine whether MediaPipe currently owns face
-  // --------------------------------------------------
-
-  const hasMediaPipeData =
-    Object.keys(
-      this.sourceValues.mediapipe
-    ).length > 0
-
-  // --------------------------------------------------
-  // Priority:
-  //
-  // MediaPipe
-  // Debugger
-  // TTS
-  // Procedural
-  // --------------------------------------------------
-
-  const sources: AnimationSource[] =
-    hasMediaPipeData
-      ? [
-          'mediapipe',
-          'debugger',
-          'tts',
-        ]
-      : [
-          'debugger',
-          'tts',
-          'procedural',
-        ]
-
-  // --------------------------------------------------
-  // Apply source priority
-  // --------------------------------------------------
-
-  for (const source of sources) {
-    const values =
-      this.sourceValues[source]
-
-    for (const name of Object.keys(values)) {
-      // Don't overwrite a higher-priority value
-      if (
-        combinedTargets[name] ===
-        undefined
-      ) {
-        combinedTargets[name] =
-          values[name]
-      }
-    }
-  }
-
-  // --------------------------------------------------
-  // Smooth blendshape changes
-  // --------------------------------------------------
-
-  for (const name of Object.keys(
-    combinedTargets
-  )) {
-    const target =
-      combinedTargets[name]
-
-    const current =
-      this.currentValues[name] ?? 0
-
-    const next =
-      current +
-      (target - current) *
-        this.smoothing
-
-    this.currentValues[name] =
-      next
-
-    this.controller.setBlendshape(
-      name,
-      next
-    )
-  }
-
-  // --------------------------------------------------
-  // Return unused blendshapes to zero
-  // --------------------------------------------------
-
-  for (const name of Object.keys(
-    this.currentValues
-  )) {
+    // ------------------------------------------------
+    // 1. DEBUGGER HAS HIGHEST PRIORITY
+    // ------------------------------------------------
     if (
-      combinedTargets[name] ===
-      undefined
+      this.sourceValues.debugger[name] !== undefined
     ) {
+      return this.sourceValues.debugger[name]
+    }
+
+    // ------------------------------------------------
+    // 2. TTS OWNS MOUTH DURING SPEECH
+    // ------------------------------------------------
+    if (
+      this.ttsBlendshapes.has(name) &&
+      this.sourceValues.tts[name] !== undefined
+    ) {
+      return this.sourceValues.tts[name]
+    }
+
+    // ------------------------------------------------
+    // 3. MEDIAPIPE CONTROLS NORMAL FACIAL TRACKING
+    // ------------------------------------------------
+    if (
+      this.sourceValues.mediapipe[name] !== undefined
+    ) {
+      return this.sourceValues.mediapipe[name]
+    }
+
+    // ------------------------------------------------
+    // 4. PROCEDURAL FALLBACK
+    // ------------------------------------------------
+    if (
+      this.sourceValues.procedural[name] !== undefined
+    ) {
+      return this.sourceValues.procedural[name]
+    }
+
+    return undefined
+  }
+
+  update() {
+    const targetNames = new Set<string>()
+
+    // Collect all blendshape names from every source.
+    for (
+      const source of Object.keys(
+        this.sourceValues
+      ) as AnimationSource[]
+    ) {
+      Object.keys(
+        this.sourceValues[source]
+      ).forEach((name) => {
+        targetNames.add(name)
+      })
+    }
+
+    // Apply resolved values.
+    for (const name of targetNames) {
+      const target =
+        this.getTargetValue(name)
+
+      if (target === undefined) {
+        continue
+      }
+
       const current =
-        this.currentValues[name]
+        this.currentValues[name] ?? 0
 
       const next =
         current +
-        (0 - current) *
+        (target - current) *
           this.smoothing
 
-      this.currentValues[name] =
-        next
+      this.currentValues[name] = next
 
       this.controller.setBlendshape(
         name,
         next
       )
     }
+
+    // Smooth unused blendshapes back to zero.
+    for (
+      const name of Object.keys(
+        this.currentValues
+      )
+    ) {
+      if (!targetNames.has(name)) {
+        const current =
+          this.currentValues[name]
+
+        const next =
+          current +
+          (0 - current) *
+            this.smoothing
+
+        this.currentValues[name] =
+          next
+
+        this.controller.setBlendshape(
+          name,
+          next
+        )
+      }
+    }
   }
-}
 
   clearSource(
     source: AnimationSource

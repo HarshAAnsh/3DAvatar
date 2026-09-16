@@ -1,94 +1,243 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 
-import { useAvatarStore } from "../store/avatarStore";
+import { useAvatarStore } from '../store/avatarStore'
 
-import { TTSController } from "../avatar/TTSController";
+import { TTSController } from '../avatar/TTSController'
 
-import { SpeechAnimation } from "../avatar/SpeechAnimation";
 
 export default function TTSPanel() {
-  const engine = useAvatarStore((state) => state.engine);
 
-  const [text, setText] = useState("Hello! I am a real-time AI avatar.");
+  // --------------------------------------------------
+  // Zustand
+  // --------------------------------------------------
 
-  const [speaking, setSpeaking] = useState(false);
+  const speechAnimation =
+    useAvatarStore(
+      (state) =>
+        state.speechAnimation
+    )
 
-  const ttsRef = useRef<TTSController | null>(null);
 
-  const speechRef = useRef<SpeechAnimation | null>(null);
+  // --------------------------------------------------
+  // State
+  // --------------------------------------------------
+
+  const [text, setText] =
+    useState(
+      'Hello! I am a real-time AI avatar.'
+    )
+
+  const [speaking, setSpeaking] =
+    useState(false)
+
+
+  // --------------------------------------------------
+  // TTS reference
+  // --------------------------------------------------
+
+  const ttsRef =
+    useRef<TTSController | null>(
+      null
+    )
+
+
+  // --------------------------------------------------
+  // Initialize TTS
+  // --------------------------------------------------
 
   useEffect(() => {
-    if (!engine) return;
 
-    const speech = new SpeechAnimation(engine);
+    const tts =
+      new TTSController({
 
-    speechRef.current = speech;
+        // -------------------------------------------
+        // Speech started
+        // -------------------------------------------
 
-    const tts = new TTSController({
-      onStart: () => {
-        speech.start();
-        setSpeaking(true);
-      },
+        onStart: () => {
 
-      onEnd: () => {
-        speech.stop();
-        setSpeaking(false);
-      },
-    });
+          console.log(
+            '[TTSPanel] Speech started'
+          )
 
-    ttsRef.current = tts;
+          speechAnimation?.start()
+
+          setSpeaking(
+            true
+          )
+        },
+
+
+        // -------------------------------------------
+        // Speech ended
+        // -------------------------------------------
+
+        onEnd: () => {
+
+          console.log(
+            '[TTSPanel] Speech ended'
+          )
+
+          speechAnimation?.stop()
+
+          setSpeaking(
+            false
+          )
+        },
+      })
+
+
+    ttsRef.current =
+      tts
+
+
+    // ---------------------------------------------
+    // Cleanup
+    // ---------------------------------------------
 
     return () => {
-      tts.stop();
-      speech.stop();
-      ttsRef.current = null;
-      speechRef.current = null;
-    };
-  }, [engine]);
+
+      tts.stop()
+
+      speechAnimation?.stop()
+
+      ttsRef.current =
+        null
+    }
+
+  }, [
+    speechAnimation,
+  ])
+
+
+  // --------------------------------------------------
+  // Speak
+  // --------------------------------------------------
 
   const speak = () => {
-    if (!text.trim()) return;
 
-    ttsRef.current?.speak(text.trim());
-  };
+    const cleanText =
+      text.trim()
+
+
+    if (!cleanText) {
+      return
+    }
+
+
+    if (!ttsRef.current) {
+
+      console.warn(
+        '[TTSPanel] TTS controller not initialized'
+      )
+
+      return
+    }
+
+
+    if (!speechAnimation) {
+
+      console.warn(
+        '[TTSPanel] Speech animation not initialized'
+      )
+
+      return
+    }
+
+
+    ttsRef.current.speak(
+      cleanText
+    )
+  }
+
+
+  // --------------------------------------------------
+  // Stop
+  // --------------------------------------------------
 
   const stop = () => {
-    ttsRef.current?.stop();
-    speechRef.current?.stop();
-    setSpeaking(false);
-  };
+
+    ttsRef.current?.stop()
+
+    speechAnimation?.stop()
+
+    setSpeaking(
+      false
+    )
+  }
+
+
+  // --------------------------------------------------
+  // UI
+  // --------------------------------------------------
 
   return (
+
     <aside
       className="
-    absolute
-    bottom-16
-    left-1/2
-    z-30
-    w-[min(740px,calc(100vw-2rem))]
-    max-h-[230px]
-    -translate-x-1/2
-    rounded-2xl
-    border
-    border-white/10
-    bg-black/80
-    p-4
-    shadow-2xl
-    backdrop-blur-xl
-  "
+        absolute
+        bottom-5
+        right-5
+        z-30
+        w-[min(420px,calc(100vw-2rem))]
+        rounded-2xl
+        border
+        border-white/10
+        bg-black/80
+        p-4
+        shadow-2xl
+        backdrop-blur-xl
+      "
     >
-      <div className="mb-3">
-        <p className="text-sm font-semibold text-white">Avatar Speech</p>
 
-        <p className="mt-1 text-xs text-zinc-400">
+      {/* ----------------------------------------- */}
+      {/* Header */}
+      {/* ----------------------------------------- */}
+
+      <div className="mb-3">
+
+        <p
+          className="
+            text-sm
+            font-semibold
+            text-white
+          "
+        >
+          Avatar Speech
+        </p>
+
+        <p
+          className="
+            mt-1
+            text-xs
+            text-zinc-400
+          "
+        >
           Browser-based text-to-speech
         </p>
+
       </div>
+
+
+      {/* ----------------------------------------- */}
+      {/* Text input */}
+      {/* ----------------------------------------- */}
 
       <textarea
         value={text}
-        onChange={(event) => setText(event.target.value)}
+
+        onChange={(event) =>
+          setText(
+            event.target.value
+          )
+        }
+
         rows={3}
+
         className="
           w-full
           resize-none
@@ -102,13 +251,35 @@ export default function TTSPanel() {
           outline-none
           placeholder:text-zinc-600
         "
-        placeholder="Type something for the avatar to say..."
+
+        placeholder="
+          Type something for the avatar to say...
+        "
       />
 
-      <div className="mt-3 flex gap-2">
+
+      {/* ----------------------------------------- */}
+      {/* Buttons */}
+      {/* ----------------------------------------- */}
+
+      <div
+        className="
+          mt-3
+          flex
+          gap-2
+        "
+      >
+
+        {/* Speak */}
+
         <button
           onClick={speak}
-          disabled={speaking || !engine}
+
+          disabled={
+            speaking ||
+            !speechAnimation
+          }
+
           className="
             flex-1
             rounded-lg
@@ -118,6 +289,7 @@ export default function TTSPanel() {
             text-sm
             font-medium
             text-black
+            transition
             hover:bg-zinc-200
             disabled:cursor-not-allowed
             disabled:opacity-40
@@ -126,8 +298,12 @@ export default function TTSPanel() {
           Speak
         </button>
 
+
+        {/* Stop */}
+
         <button
           onClick={stop}
+
           className="
             rounded-lg
             border
@@ -137,18 +313,55 @@ export default function TTSPanel() {
             py-2
             text-sm
             text-white
+            transition
             hover:bg-zinc-800
           "
         >
           Stop
         </button>
+
       </div>
 
+
+      {/* ----------------------------------------- */}
+      {/* Speaking indicator */}
+      {/* ----------------------------------------- */}
+
       {speaking && (
-        <div className="mt-3 text-center text-xs text-green-400">
+
+        <div
+          className="
+            mt-3
+            text-center
+            text-xs
+            text-green-400
+          "
+        >
           ● AVATAR SPEAKING
         </div>
+
       )}
+
+
+      {/* ----------------------------------------- */}
+      {/* Initialization status */}
+      {/* ----------------------------------------- */}
+
+      {!speechAnimation && (
+
+        <div
+          className="
+            mt-3
+            text-center
+            text-xs
+            text-yellow-400
+          "
+        >
+          Initializing avatar speech...
+        </div>
+
+      )}
+
     </aside>
-  );
+  )
 }

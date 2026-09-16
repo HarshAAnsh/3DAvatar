@@ -3,6 +3,7 @@ import * as THREE from 'three'
 
 import { FacialAnimationEngine } from '../avatar/FacialAnimationEngine'
 import { HeadPoseController } from '../avatar/HeadPoseController'
+import { SpeechAnimation } from '../avatar/SpeechAnimation'
 
 interface AvatarStore {
   scene: THREE.Object3D | null
@@ -10,6 +11,8 @@ interface AvatarStore {
   engine: FacialAnimationEngine | null
 
   headPose: HeadPoseController | null
+
+  speechAnimation: SpeechAnimation | null
 
   setScene: (scene: THREE.Object3D) => void
 
@@ -20,6 +23,10 @@ interface AvatarStore {
   setHeadPose: (
     headPose: HeadPoseController
   ) => void
+
+  setSpeechAnimation: (
+    speechAnimation: SpeechAnimation | null
+  ) => void
 }
 
 export const useAvatarStore =
@@ -29,6 +36,8 @@ export const useAvatarStore =
     engine: null,
 
     headPose: null,
+
+    speechAnimation: null,
 
     setScene: (scene) =>
       set({
@@ -43,5 +52,12 @@ export const useAvatarStore =
     setHeadPose: (headPose) =>
       set({
         headPose,
+      }),
+
+    setSpeechAnimation: (
+      speechAnimation
+    ) =>
+      set({
+        speechAnimation,
       }),
   }))

@@ -4,6 +4,11 @@ export interface TTSCallbacks {
   onBoundary?: (
     event: SpeechSynthesisEvent
   ) => void
+  onPause?: () => void
+  onResume?: () => void
+  onError?: (
+    event: SpeechSynthesisErrorEvent
+  ) => void
 }
 
 export class TTSController {
@@ -16,9 +21,7 @@ export class TTSController {
   }
 
   speak(text: string) {
-    if (
-      !('speechSynthesis' in window)
-    ) {
+    if (!('speechSynthesis' in window)) {
       console.error(
         '[TTS] Speech synthesis is not supported'
       )
@@ -29,9 +32,7 @@ export class TTSController {
     this.stop()
 
     const utterance =
-      new SpeechSynthesisUtterance(
-        text
-      )
+      new SpeechSynthesisUtterance(text)
 
     utterance.rate = 1
     utterance.pitch = 1
@@ -56,7 +57,42 @@ export class TTSController {
     utterance.onboundary = (
       event
     ) => {
+      console.log(
+        '[TTS] Boundary:',
+        event.name,
+        event.charIndex
+      )
+
       this.callbacks.onBoundary?.(
+        event
+      )
+    }
+
+    utterance.onpause = () => {
+      console.log(
+        '[TTS] Speech paused'
+      )
+
+      this.callbacks.onPause?.()
+    }
+
+    utterance.onresume = () => {
+      console.log(
+        '[TTS] Speech resumed'
+      )
+
+      this.callbacks.onResume?.()
+    }
+
+    utterance.onerror = (
+      event
+    ) => {
+      console.error(
+        '[TTS] Speech error:',
+        event.error
+      )
+
+      this.callbacks.onError?.(
         event
       )
     }
@@ -74,6 +110,22 @@ export class TTSController {
     }
   }
 
+  pause() {
+    if (
+      'speechSynthesis' in window
+    ) {
+      window.speechSynthesis.pause()
+    }
+  }
+
+  resume() {
+    if (
+      'speechSynthesis' in window
+    ) {
+      window.speechSynthesis.resume()
+    }
+  }
+
   isSpeaking() {
     if (
       !('speechSynthesis' in window)
@@ -81,7 +133,6 @@ export class TTSController {
       return false
     }
 
-    return window.speechSynthesis
-      .speaking
+    return window.speechSynthesis.speaking
   }
 }
