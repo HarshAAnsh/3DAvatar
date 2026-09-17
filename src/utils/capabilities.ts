@@ -1,42 +1,39 @@
 export interface RuntimeCapabilities {
-  webgl2: boolean
-  gpu: string
-  cameraApi: boolean
-  speechSynthesis: boolean
+  webgl2: boolean;
+  gpu: string;
+  cameraApi: boolean;
+  speechSynthesis: boolean;
 }
 
 export function detectRuntimeCapabilities(): RuntimeCapabilities {
-  let webgl2 = false
-  let gpu = 'Unknown'
+  let webgl2 = false;
+  let gpu = "Unknown";
 
   try {
-    const canvas =
-      document.createElement('canvas')
+    const canvas = document.createElement("canvas");
 
-    const gl =
-      canvas.getContext('webgl2')
-
-    webgl2 = Boolean(gl)
+    const gl = canvas.getContext("webgl2");
 
     if (gl) {
-      const debugInfo =
-        gl.getExtension(
-          'WEBGL_debug_renderer_info'
-        )
+      webgl2 = true;
 
-      if (debugInfo) {
-        gpu =
-          gl.getParameter(
-            debugInfo.UNMASKED_RENDERER_WEBGL
-          ) || 'Unknown'
+      /*
+       * Modern WebGL2 exposes RENDERER
+       * through getParameter in browsers
+       * that support it.
+       */
+      try {
+        const renderer = gl.getParameter(gl.RENDERER);
+
+        if (typeof renderer === "string" && renderer.trim()) {
+          gpu = renderer;
+        }
+      } catch {
+        gpu = "WebGL 2 renderer";
       }
-
-      gl.getExtension(
-        'WEBGL_lose_context'
-      )?.loseContext()
     }
   } catch {
-    webgl2 = false
+    webgl2 = false;
   }
 
   return {
@@ -44,12 +41,8 @@ export function detectRuntimeCapabilities(): RuntimeCapabilities {
 
     gpu,
 
-    cameraApi:
-      Boolean(
-        navigator.mediaDevices?.getUserMedia
-      ),
+    cameraApi: Boolean(navigator.mediaDevices?.getUserMedia),
 
-    speechSynthesis:
-      'speechSynthesis' in window,
-  }
+    speechSynthesis: "speechSynthesis" in window,
+  };
 }

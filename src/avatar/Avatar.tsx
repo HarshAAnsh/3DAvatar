@@ -271,5 +271,5 @@ export default function Avatar() {
     return null;
   }
 
-  return <primitive object={scene} scale={0.78} position={[0, 0.25, 0]} />;
+  return <primitive object={scene} scale={0.86} position={[0, 0.05, 0]} />;
 }

@@ -1,12 +1,13 @@
-import AvatarCanvas from './components/AvatarCanvas'
-import AvatarModeSwitcher from './components/AvatarModeSwitcher'
-import AvatarStatus from './components/AvatarStatus'
-import FacialDebugger from './components/FacialDebugger'
-import PerformanceMonitor from './components/PerformanceMonitor'
-import SystemDiagnostics from './components/SystemDiagnostics'
-import TTSPanel from './components/TTSPanel'
-import TrackingControls from './components/TrackingControls'
-import WebcamTracker from './components/WebcamTracker'
+import AvatarCanvas from "./components/AvatarCanvas";
+import AvatarModeSwitcher from "./components/AvatarModeSwitcher";
+import AvatarStatus from "./components/AvatarStatus";
+import ConversationStatus from "./components/ConversationStatus";
+import FacialDebugger from "./components/FacialDebugger";
+import PerformanceMonitor from "./components/PerformanceMonitor";
+import SystemDiagnostics from "./components/SystemDiagnostics";
+import TrackingControls from "./components/TrackingControls";
+import WebcamTracker from "./components/WebcamTracker";
+import ConversationPanel from "./components/ConversationPanel";
 
 function App() {
   return (
@@ -54,6 +55,9 @@ function App() {
       {/* Mode */}
       <AvatarModeSwitcher />
 
+      {/* ConversationStatus*/}
+      <ConversationStatus />
+
       {/* Left controls */}
       <TrackingControls />
 
@@ -71,8 +75,8 @@ function App() {
       {/* Performance */}
       <PerformanceMonitor />
 
-      {/* TTS / Demo */}
-      <TTSPanel />
+      {/* <ConversationPanel /> */}
+      <ConversationPanel />
 
       {/* Footer */}
       <div
@@ -98,7 +102,7 @@ function App() {
         Three.js • WebGL • MediaPipe • 52 Blendshapes
       </div>
     </main>
-  )
+  );
 }
 
-export default App
+export default App;

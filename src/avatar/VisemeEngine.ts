@@ -3,16 +3,7 @@ import * as THREE from "three";
 import { FacialAnimationEngine } from "./FacialAnimationEngine";
 
 export type Viseme =
-  | "rest"
-  | "A"
-  | "E"
-  | "I"
-  | "O"
-  | "U"
-  | "M"
-  | "F"
-  | "L"
-  | "S";
+  "rest" | "A" | "E" | "I" | "O" | "U" | "M" | "F" | "L" | "S";
 
 export class VisemeEngine {
   private engine: FacialAnimationEngine;

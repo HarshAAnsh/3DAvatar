@@ -1,1 +1,1 @@
-export type AvatarMode = 'live' | 'demo'
+export type AvatarMode = "live" | "demo";

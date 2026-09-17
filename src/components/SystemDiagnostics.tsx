@@ -1,76 +1,54 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from "react";
 
-import { useAvatarStore } from '../store/avatarStore'
+import { useAvatarStore } from "../store/avatarStore";
 
 import {
   detectRuntimeCapabilities,
   type RuntimeCapabilities,
-} from '../utils/capabilities'
+} from "../utils/capabilities";
 
 export default function SystemDiagnostics() {
-  const mode = useAvatarStore(
-    (state) => state.mode
-  )
+  const mode = useAvatarStore((state) => state.mode);
 
-  const headPose = useAvatarStore(
-    (state) => state.headPose
-  )
+  const headPose = useAvatarStore((state) => state.headPose);
 
-  const speechAnimation = useAvatarStore(
-    (state) => state.speechAnimation
-  )
+  const speechAnimation = useAvatarStore((state) => state.speechAnimation);
 
-  const [capabilities, setCapabilities] =
-    useState<RuntimeCapabilities | null>(
-      null
-    )
+  const [capabilities, setCapabilities] = useState<RuntimeCapabilities | null>(
+    null,
+  );
 
-  const [fallback, setFallback] =
-    useState(false)
+  const [fallback, setFallback] = useState(false);
 
   useEffect(() => {
-    const detected =
-      detectRuntimeCapabilities()
+    const detected = detectRuntimeCapabilities();
 
-    setCapabilities(detected)
-  }, [])
+    setCapabilities(detected);
+  }, []);
 
   useEffect(() => {
     const updateFallback = () => {
-      const trackingActive =
-        headPose?.isTrackingActive() ??
-        false
+      const trackingActive = headPose?.isTrackingActive() ?? false;
 
-      setFallback(
-        !trackingActive &&
-          mode === 'live'
-      )
-    }
+      setFallback(!trackingActive && mode === "live");
+    };
 
-    updateFallback()
+    updateFallback();
 
-    const interval =
-      window.setInterval(
-        updateFallback,
-        500
-      )
+    const interval = window.setInterval(updateFallback, 500);
 
     return () => {
-      window.clearInterval(interval)
-    }
-  }, [headPose, mode])
+      window.clearInterval(interval);
+    };
+  }, [headPose, mode]);
 
   if (!capabilities) {
-    return null
+    return null;
   }
 
-  const headTrackingActive =
-    headPose?.isTrackingActive() ??
-    false
+  const headTrackingActive = headPose?.isTrackingActive() ?? false;
 
-  const ttsReady =
-    Boolean(speechAnimation) &&
-    capabilities.speechSynthesis
+  const ttsReady = Boolean(speechAnimation) && capabilities.speechSynthesis;
 
   return (
     <aside
@@ -91,94 +69,50 @@ export default function SystemDiagnostics() {
       "
     >
       <div className="mb-4">
-        <p className="text-sm font-semibold">
-          System Diagnostics
-        </p>
+        <p className="text-sm font-semibold">System Diagnostics</p>
 
-        <p className="mt-1 text-xs text-zinc-500">
-          Runtime capabilities
-        </p>
+        <p className="mt-1 text-xs text-zinc-500">Runtime capabilities</p>
       </div>
 
       <div className="space-y-2 text-xs">
         <DiagnosticRow
           label="WebGL 2"
-          value={
-            capabilities.webgl2
-              ? 'READY'
-              : 'UNAVAILABLE'
-          }
-          active={
-            capabilities.webgl2
-          }
+          value={capabilities.webgl2 ? "READY" : "UNAVAILABLE"}
+          active={capabilities.webgl2}
         />
 
-        <DiagnosticRow
-          label="GPU"
-          value={formatGpu(
-            capabilities.gpu
-          )}
-          active
-        />
+        <DiagnosticRow label="GPU" value={formatGpu(capabilities.gpu)} active />
 
         <DiagnosticRow
           label="Camera"
-          value={
-            capabilities.cameraApi
-              ? 'READY'
-              : 'UNAVAILABLE'
-          }
-          active={
-            capabilities.cameraApi
-          }
+          value={capabilities.cameraApi ? "READY" : "UNAVAILABLE"}
+          active={capabilities.cameraApi}
         />
 
-        <DiagnosticRow
-          label="MediaPipe"
-          value="READY"
-          active
-        />
+        <DiagnosticRow label="MediaPipe" value="READY" active />
 
         <DiagnosticRow
           label="Head Tracking"
-          value={
-            headTrackingActive
-              ? 'ACTIVE'
-              : 'INACTIVE'
-          }
-          active={
-            headTrackingActive
-          }
+          value={headTrackingActive ? "ACTIVE" : "INACTIVE"}
+          active={headTrackingActive}
         />
 
         <DiagnosticRow
           label="TTS"
-          value={
-            ttsReady
-              ? 'READY'
-              : 'UNAVAILABLE'
-          }
+          value={ttsReady ? "READY" : "UNAVAILABLE"}
           active={ttsReady}
         />
 
         <DiagnosticRow
           label="Fallback"
-          value={
-            fallback
-              ? 'ON'
-              : 'OFF'
-          }
+          value={fallback ? "ON" : "OFF"}
           active={!fallback}
         />
 
-        <DiagnosticRow
-          label="Mode"
-          value={mode.toUpperCase()}
-          active
-        />
+        <DiagnosticRow label="Mode" value={mode.toUpperCase()} active />
       </div>
     </aside>
-  )
+  );
 }
 
 function DiagnosticRow({
@@ -186,9 +120,9 @@ function DiagnosticRow({
   value,
   active,
 }: {
-  label: string
-  value: string
-  active: boolean
+  label: string;
+  value: string;
+  active: boolean;
 }) {
   return (
     <div className="flex items-center justify-between gap-3">
@@ -196,14 +130,12 @@ function DiagnosticRow({
         <span
           className={
             active
-              ? 'h-2 w-2 rounded-full bg-green-400'
-              : 'h-2 w-2 rounded-full bg-zinc-600'
+              ? "h-2 w-2 rounded-full bg-green-400"
+              : "h-2 w-2 rounded-full bg-zinc-600"
           }
         />
 
-        <span className="text-zinc-300">
-          {label}
-        </span>
+        <span className="text-zinc-300">{label}</span>
       </div>
 
       <span
@@ -220,15 +152,13 @@ function DiagnosticRow({
         {value}
       </span>
     </div>
-  )
+  );
 }
 
-function formatGpu(
-  gpu: string
-) {
+function formatGpu(gpu: string) {
   if (gpu.length <= 24) {
-    return gpu
+    return gpu;
   }
 
-  return `${gpu.slice(0, 21)}...`
+  return `${gpu.slice(0, 21)}...`;
 }
