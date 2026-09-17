@@ -1,29 +1,23 @@
-import { useState } from 'react'
+import { useState } from "react";
 
-import { useAvatarStore } from '../store/avatarStore'
+import { useAvatarStore } from "../store/avatarStore";
 
 export default function TrackingControls() {
-  const headPose =
-    useAvatarStore(
-      (state) => state.headPose
-    )
+  const headPose = useAvatarStore((state) => state.headPose);
 
-  const [smoothing, setSmoothing] =
-    useState(0.15)
+  const [smoothing, setSmoothing] = useState(0.15);
 
   const calibrate = () => {
-    if (!headPose) return
+    if (!headPose) return;
 
-    headPose.calibrate()
-  }
+    headPose.calibrate();
+  };
 
-  const handleSmoothingChange = (
-    value: number
-  ) => {
-    setSmoothing(value)
+  const handleSmoothingChange = (value: number) => {
+    setSmoothing(value);
 
-    headPose?.setSmoothing(value)
-  }
+    headPose?.setSmoothing(value);
+  };
 
   return (
     <aside
@@ -44,9 +38,7 @@ export default function TrackingControls() {
       "
     >
       <div className="mb-4">
-        <p className="text-sm font-semibold">
-          Head Tracking
-        </p>
+        <p className="text-sm font-semibold">Head Tracking</p>
 
         <p className="mt-1 text-xs text-zinc-400">
           Calibrate your neutral position
@@ -76,13 +68,9 @@ export default function TrackingControls() {
 
       <div className="mt-5">
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs text-zinc-400">
-            Smoothing
-          </span>
+          <span className="text-xs text-zinc-400">Smoothing</span>
 
-          <span className="text-xs text-zinc-300">
-            {smoothing.toFixed(2)}
-          </span>
+          <span className="text-xs text-zinc-300">{smoothing.toFixed(2)}</span>
         </div>
 
         <input
@@ -92,13 +80,11 @@ export default function TrackingControls() {
           step="0.01"
           value={smoothing}
           onChange={(event) =>
-            handleSmoothingChange(
-              Number(event.target.value)
-            )
+            handleSmoothingChange(Number(event.target.value))
           }
           className="w-full"
         />
       </div>
     </aside>
-  )
+  );
 }

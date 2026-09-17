@@ -1,44 +1,33 @@
-import { create } from 'zustand'
+import { create } from "zustand";
 
 interface HeadPoseState {
-  pitch: number
-  yaw: number
-  roll: number
+  pitch: number;
+  yaw: number;
+  roll: number;
 
-  tracking: boolean
+  tracking: boolean;
 
-  setPose: (
-    pitch: number,
-    yaw: number,
-    roll: number
-  ) => void
+  setPose: (pitch: number, yaw: number, roll: number) => void;
 
-  setTracking: (
-    tracking: boolean
-  ) => void
+  setTracking: (tracking: boolean) => void;
 }
 
-export const useHeadPoseStore =
-  create<HeadPoseState>((set) => ({
-    pitch: 0,
-    yaw: 0,
-    roll: 0,
+export const useHeadPoseStore = create<HeadPoseState>((set) => ({
+  pitch: 0,
+  yaw: 0,
+  roll: 0,
 
-    tracking: false,
+  tracking: false,
 
-    setPose: (
+  setPose: (pitch, yaw, roll) =>
+    set({
       pitch,
       yaw,
-      roll
-    ) =>
-      set({
-        pitch,
-        yaw,
-        roll,
-      }),
+      roll,
+    }),
 
-    setTracking: (tracking) =>
-      set({
-        tracking,
-      }),
-  }))
+  setTracking: (tracking) =>
+    set({
+      tracking,
+    }),
+}));

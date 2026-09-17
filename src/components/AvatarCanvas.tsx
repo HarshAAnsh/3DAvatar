@@ -8,9 +8,9 @@ export default function AvatarCanvas() {
   return (
     <Canvas
       camera={{
-  position: [0, 0.15, 5],
-  fov: 32,
-}}
+        position: [0, 0.15, 5],
+        fov: 32,
+      }}
       gl={{
         antialias: true,
         alpha: true,
@@ -29,11 +29,11 @@ export default function AvatarCanvas() {
       <BlendshapeInspector />
 
       <OrbitControls
-  enablePan={false}
-  minDistance={2}
-  maxDistance={6}
-  target={[0, 0.1, 0]}
-/>
+        enablePan={false}
+        minDistance={2}
+        maxDistance={6}
+        target={[0, 0.1, 0]}
+      />
     </Canvas>
   );
 }

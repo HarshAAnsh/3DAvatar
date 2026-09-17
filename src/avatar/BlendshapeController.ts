@@ -3,7 +3,9 @@ import * as THREE from 'three'
 export class BlendshapeController {
   private meshes: THREE.Mesh[] = []
 
-  constructor(scene: THREE.Object3D) {
+  constructor(
+    scene: THREE.Object3D
+  ) {
     scene.traverse((object) => {
       if (
         object instanceof THREE.Mesh &&
@@ -11,25 +13,29 @@ export class BlendshapeController {
         object.morphTargetInfluences
       ) {
         this.meshes.push(object)
-
-        console.log(
-          '[BlendshapeController] Mesh:',
-          object.name
-        )
-
-        console.log(
-          '[BlendshapeController] Morph targets:',
-          Object.keys(
-            object.morphTargetDictionary
-          ).length
-        )
       }
     })
 
     console.log(
-      '[BlendshapeController] Total meshes:',
+      '[BlendshapeController] Meshes:',
       this.meshes.length
     )
+
+    for (
+      const mesh of this.meshes
+    ) {
+      console.log(
+        '[BlendshapeController] Mesh:',
+        mesh.name
+      )
+
+      console.log(
+        '[BlendshapeController] Morph targets:',
+        Object.keys(
+          mesh.morphTargetDictionary ?? {}
+        ).length
+      )
+    }
   }
 
   setBlendshape(
@@ -42,8 +48,6 @@ export class BlendshapeController {
         0,
         1
       )
-
-    let found = false
 
     for (
       const mesh of this.meshes
@@ -60,34 +64,7 @@ export class BlendshapeController {
         mesh.morphTargetInfluences[
           index
         ] = clampedValue
-
-        found = true
-
-        if (
-          name === 'jawOpen'
-        ) {
-          console.log(
-            '[BlendshapeController] jawOpen →',
-            {
-              mesh: mesh.name,
-              index,
-              value: clampedValue,
-              actual:
-                mesh
-                  .morphTargetInfluences[
-                    index
-                  ],
-            }
-          )
-        }
       }
-    }
-
-    if (!found) {
-      console.warn(
-        '[BlendshapeController] Blendshape not found:',
-        name
-      )
     }
   }
 
@@ -103,10 +80,9 @@ export class BlendshapeController {
       ) {
         Object.keys(
           mesh.morphTargetDictionary
-        ).forEach(
-          (name) =>
-            names.add(name)
-        )
+        ).forEach((name) => {
+          names.add(name)
+        })
       }
     }
 
@@ -120,14 +96,8 @@ export class BlendshapeController {
       if (
         mesh.morphTargetInfluences
       ) {
-        mesh.morphTargetInfluences.fill(
-          0
-        )
+        mesh.morphTargetInfluences.fill(0)
       }
     }
-
-    console.log(
-      '[BlendshapeController] Reset'
-    )
   }
 }

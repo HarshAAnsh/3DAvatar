@@ -1,134 +1,116 @@
-import * as THREE from 'three'
+import * as THREE from "three";
 
 export class HeadPoseController {
-  private target: THREE.Object3D
+  private target: THREE.Object3D;
 
-  private currentQuaternion =
-    new THREE.Quaternion()
+  private currentQuaternion = new THREE.Quaternion();
 
-  private targetQuaternion =
-    new THREE.Quaternion()
+  private targetQuaternion = new THREE.Quaternion();
 
-  private neutralQuaternion =
-    new THREE.Quaternion()
+  private neutralQuaternion = new THREE.Quaternion();
 
-  private matrix =
-    new THREE.Matrix4()
+  private matrix = new THREE.Matrix4();
 
-  private relativeQuaternion =
-    new THREE.Quaternion()
+  private relativeQuaternion = new THREE.Quaternion();
 
-  private smoothing = 0.15
+  private smoothing = 0.15;
 
-  private calibrated = false
+  private calibrated = false;
+
+  /*
+   * True only when fresh tracking data
+   * is actually available.
+   */
+  private trackingActive = false;
 
   constructor(target: THREE.Object3D) {
-    this.target = target
+    this.target = target;
 
-    console.log(
-      '[HeadPose] Initialized:',
-      target.name
-    )
+    console.log("[HeadPose] Initialized:", target.name);
   }
 
   setSmoothing(value: number) {
-    this.smoothing =
-      THREE.MathUtils.clamp(
-        value,
-        0.01,
-        1
-      )
+    this.smoothing = THREE.MathUtils.clamp(value, 0.01, 1);
+  }
+
+  setTrackingActive(active: boolean) {
+    if (this.trackingActive !== active) {
+      console.log("[HeadPose] Tracking:", active ? "ACTIVE" : "INACTIVE");
+    }
+
+    this.trackingActive = active;
+  }
+
+  isTrackingActive() {
+    return this.trackingActive;
   }
 
   setMatrix(data: ArrayLike<number>) {
     if (data.length !== 16) {
-      console.warn(
-        '[HeadPose] Invalid matrix length:',
-        data.length
-      )
+      console.warn("[HeadPose] Invalid matrix length:", data.length);
 
-      return
+      return;
     }
 
-    this.matrix.fromArray(data)
+    this.matrix.fromArray(data);
 
-    const rawQuaternion =
-      new THREE.Quaternion()
+    const rawQuaternion = new THREE.Quaternion();
 
-    rawQuaternion.setFromRotationMatrix(
-      this.matrix
-    )
+    rawQuaternion.setFromRotationMatrix(this.matrix);
 
     if (!this.calibrated) {
-      this.targetQuaternion.copy(
-        rawQuaternion
-      )
+      this.targetQuaternion.copy(rawQuaternion);
 
-      return
+      return;
     }
 
-    // Convert current pose into a pose
-    // relative to the calibrated neutral pose.
     this.relativeQuaternion
       .copy(this.neutralQuaternion)
       .invert()
-      .multiply(rawQuaternion)
+      .multiply(rawQuaternion);
 
-    this.targetQuaternion.copy(
-      this.relativeQuaternion
-    )
+    this.targetQuaternion.copy(this.relativeQuaternion);
   }
 
   calibrate() {
-    this.neutralQuaternion.copy(
-      this.targetQuaternion
-    )
+    this.neutralQuaternion.copy(this.targetQuaternion);
 
-    this.currentQuaternion.identity()
-    this.targetQuaternion.identity()
+    this.currentQuaternion.identity();
 
-    this.calibrated = true
+    this.targetQuaternion.identity();
 
-    this.target.quaternion.identity()
+    this.calibrated = true;
 
-    console.log(
-      '[HeadPose] Calibrated'
-    )
+    this.target.quaternion.identity();
+
+    console.log("[HeadPose] Calibrated");
   }
 
   update(delta: number) {
-    const alpha =
-      THREE.MathUtils.clamp(
-        delta * 10 * this.smoothing,
-        0,
-        1
-      )
+    const alpha = THREE.MathUtils.clamp(delta * 10 * this.smoothing, 0, 1);
 
-    this.currentQuaternion.slerp(
-      this.targetQuaternion,
-      alpha
-    )
+    this.currentQuaternion.slerp(this.targetQuaternion, alpha);
 
-    this.target.quaternion.copy(
-      this.currentQuaternion
-    )
+    this.target.quaternion.copy(this.currentQuaternion);
   }
 
   reset() {
-    this.currentQuaternion.identity()
+    this.currentQuaternion.identity();
 
-    this.targetQuaternion.identity()
+    this.targetQuaternion.identity();
 
-    this.neutralQuaternion.identity()
+    this.neutralQuaternion.identity();
 
-    this.relativeQuaternion.identity()
+    this.relativeQuaternion.identity();
 
-    this.calibrated = false
+    this.calibrated = false;
 
-    this.target.quaternion.identity()
+    this.trackingActive = false;
+
+    this.target.quaternion.identity();
   }
 
   isCalibrated() {
-    return this.calibrated
+    return this.calibrated;
   }
 }

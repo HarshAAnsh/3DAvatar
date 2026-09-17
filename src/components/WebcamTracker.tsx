@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
 import { useHeadPoseStore } from "../store/headPoseStore";
@@ -12,32 +13,51 @@ export default function WebcamTracker() {
   const animationFrameRef = useRef<number | null>(null);
 
   const lastVideoTimeRef = useRef(-1);
+
   const lastDetectionTimeRef = useRef(0);
+
   const detectionInterval = 50;
 
-  // Prevent logging the head matrix every frame
   const headMatrixLoggedRef = useRef(false);
 
-  // Prevent Zustand updates every frame
   const previousFaceDetectedRef = useRef(false);
 
   const engine = useAvatarStore((state) => state.engine);
 
   const headPose = useAvatarStore((state) => state.headPose);
 
+  const mode = useAvatarStore((state) => state.mode);
+
+  /*
+   * Keep the latest values inside refs so the
+   * MediaPipe detection loop does not need to
+   * restart when Live/Demo changes.
+   */
+  const modeRef = useRef(mode);
+
   const headPoseRef = useRef(headPose);
+
+  const engineRef = useRef(engine);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
 
   useEffect(() => {
     headPoseRef.current = headPose;
   }, [headPose]);
-  const engineRef = useRef(engine);
 
-  //   const setHeadPose =
-  //     useHeadPoseStore(
-  //       (state) => state.setPose
-  //     )
+  useEffect(() => {
+    engineRef.current = engine;
+  }, [engine]);
 
-  const setHeadTracking = useHeadPoseStore((state) => state.setTracking);
+  /*
+   * Get the setter directly from Zustand.
+   *
+   * This avoids the implicit-any issue around
+   * the selector callback in an untyped store.
+   */
+  const setHeadTracking = useHeadPoseStore.getState().setTracking;
 
   const [cameraActive, setCameraActive] = useState(false);
 
@@ -47,40 +67,26 @@ export default function WebcamTracker() {
 
   const [error, setError] = useState<string | null>(null);
 
-  // ----------------------------------------------------
-  // Always keep latest engine
-  // ----------------------------------------------------
-
-  useEffect(() => {
-    engineRef.current = engine;
-  }, [engine]);
-
-  // ----------------------------------------------------
-  // Initialize MediaPipe + Camera ONCE
-  // ----------------------------------------------------
-
   useEffect(() => {
     let stream: MediaStream | null = null;
-
     let cancelled = false;
 
     const initialize = async () => {
       try {
         console.log("[MediaPipe] Initializing vision tasks...");
-        // ----------------------------------------------
-        // Load MediaPipe WASM
-        // ----------------------------------------------
 
+        /*
+         * Load MediaPipe WASM
+         */
         const vision = await FilesetResolver.forVisionTasks(
           "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm",
         );
 
         if (cancelled) return;
 
-        // ----------------------------------------------
-        // Create Face Landmarker
-        // ----------------------------------------------
-
+        /*
+         * Create Face Landmarker
+         */
         const faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath: "/models/face_landmarker.task",
@@ -106,10 +112,9 @@ export default function WebcamTracker() {
 
         console.log("[MediaPipe] Face Landmarker ready");
 
-        // ----------------------------------------------
-        // Camera
-        // ----------------------------------------------
-
+        /*
+         * Camera
+         */
         console.log("[Webcam] Requesting camera...");
 
         stream = await navigator.mediaDevices.getUserMedia({
@@ -122,7 +127,6 @@ export default function WebcamTracker() {
             },
             facingMode: "user",
           },
-
           audio: false,
         });
 
@@ -156,10 +160,9 @@ export default function WebcamTracker() {
       }
     };
 
-    // ----------------------------------------------
-    // Detection loop
-    // ----------------------------------------------
-
+    /*
+     * Detection loop
+     */
     const startDetection = () => {
       const detectFrame = () => {
         if (cancelled) {
@@ -190,23 +193,35 @@ export default function WebcamTracker() {
             const result = landmarker.detectForVideo(video, now);
 
             const hasFace = result.faceLandmarks.length > 0;
+            const currentHeadPose = headPoseRef.current;
 
-            // ------------------------------------------
-            // Face tracking state
-            // ------------------------------------------
-
+            if (currentHeadPose) {
+              currentHeadPose.setTrackingActive(
+                modeRef.current === "live" && hasFace,
+              );
+            }
+            /*
+             * Face tracking state
+             */
             if (hasFace !== previousFaceDetectedRef.current) {
               previousFaceDetectedRef.current = hasFace;
 
               setFaceDetected(hasFace);
+
               setHeadTracking(hasFace);
             }
 
-            // ------------------------------------------
-            // HEAD POSE DEBUG
-            // ------------------------------------------
-
-            if (hasFace && result.facialTransformationMatrixes.length > 0) {
+            /*
+             * HEAD POSE
+             *
+             * Only apply head pose in
+             * Live mode.
+             */
+            if (
+              modeRef.current === "live" &&
+              hasFace &&
+              result.facialTransformationMatrixes.length > 0
+            ) {
               const matrix = result.facialTransformationMatrixes[0];
 
               const currentHeadPose = headPoseRef.current;
@@ -221,22 +236,24 @@ export default function WebcamTracker() {
                 console.log("[MediaPipe] Head pose matrix connected");
               }
             }
+
             const currentEngine = engineRef.current;
 
-            // ------------------------------------------
-            // Face detected
-            // ------------------------------------------
-
-            if (hasFace && result.faceBlendshapes.length > 0 && currentEngine) {
+            /*
+             * FACE BLENDSHAPES
+             *
+             * Only apply MediaPipe
+             * facial data in Live mode.
+             */
+            if (
+              modeRef.current === "live" &&
+              hasFace &&
+              result.faceBlendshapes.length > 0 &&
+              currentEngine
+            ) {
               const categories = result.faceBlendshapes[0].categories;
 
               for (const category of categories) {
-                // MediaPipe also returns _neutral.
-                // It is not an avatar blendshape.
-                if (category.categoryName === "_neutral") {
-                  continue;
-                }
-
                 currentEngine.setARKitBlendshape(
                   category.categoryName,
                   category.score,
@@ -245,11 +262,23 @@ export default function WebcamTracker() {
               }
             }
 
-            // ------------------------------------------
-            // No face
-            // ------------------------------------------
+            /*
+             * When the user leaves Live mode,
+             * remove old MediaPipe values.
+             *
+             * This is important because otherwise
+             * previous facial values could remain
+             * active while in Demo mode.
+             */
+            if (modeRef.current !== "live" && currentEngine) {
+              currentEngine.clearSource("mediapipe");
+            }
 
-            if (!hasFace && currentEngine) {
+            /*
+             * When no face is detected in Live mode,
+             * clear MediaPipe facial values.
+             */
+            if (modeRef.current === "live" && !hasFace && currentEngine) {
               currentEngine.clearSource("mediapipe");
             }
           }
@@ -263,10 +292,9 @@ export default function WebcamTracker() {
 
     initialize();
 
-    // ----------------------------------------------
-    // Cleanup
-    // ----------------------------------------------
-
+    /*
+     * Cleanup
+     */
     return () => {
       console.log("[Webcam] Cleaning up");
 
@@ -296,9 +324,12 @@ export default function WebcamTracker() {
       setCameraActive(false);
       setTrackingReady(false);
       setFaceDetected(false);
+
       setHeadTracking(false);
+
+      headPoseRef.current?.setTrackingActive(false);
     };
-  }, [setHeadTracking]);
+  }, []);
 
   return (
     <div
@@ -333,14 +364,14 @@ export default function WebcamTracker() {
         {!cameraActive && !error && (
           <div
             className="
-              absolute
-              inset-0
-              flex
-              items-center
-              justify-center
-              text-xs
-              text-zinc-400
-            "
+                absolute
+                inset-0
+                flex
+                items-center
+                justify-center
+                text-xs
+                text-zinc-400
+              "
           >
             Starting camera...
           </div>

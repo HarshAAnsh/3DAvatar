@@ -1,125 +1,141 @@
-import * as THREE from 'three'
-
-import {
-  FacialAnimationEngine,
-} from './FacialAnimationEngine'
+import { FacialAnimationEngine } from "./FacialAnimationEngine";
+import { VisemeEngine } from "./VisemeEngine";
+import { characterToViseme } from "./VisemeMapper";
 
 export class SpeechAnimation {
-  private engine: FacialAnimationEngine
+  private engine: FacialAnimationEngine;
+  private visemeEngine: VisemeEngine;
 
-  private speaking = false
-  private time = 0
+  private speaking = false;
+  private text = "";
 
-  constructor(
-    engine: FacialAnimationEngine
-  ) {
-    this.engine = engine
+  private currentCharacterIndex = 0;
 
-    console.log(
-      '[SpeechAnimation] Initialized'
-    )
+  private timeSinceCharacter = 0;
+
+  /*
+   * Used as a fallback between browser
+   * speech boundary events.
+   */
+  private fallbackInterval = 0.08;
+
+  constructor(engine: FacialAnimationEngine) {
+    this.engine = engine;
+
+    this.visemeEngine = new VisemeEngine(engine);
+
+    console.log("[SpeechAnimation] Initialized");
   }
 
-  start() {
-    this.speaking = true
-    this.time = 0
+  start(text = "") {
+    this.speaking = true;
 
-    console.log(
-      '[SpeechAnimation] START'
-    )
+    this.text = text;
+
+    this.currentCharacterIndex = 0;
+
+    this.timeSinceCharacter = 0;
+
+    this.engine.setTTSActive(true);
+
+    this.visemeEngine.setViseme("rest");
+
+    console.log("[SpeechAnimation] START");
   }
 
   stop() {
-    this.speaking = false
-    this.time = 0
+    this.speaking = false;
 
-    console.log(
-      '[SpeechAnimation] STOP'
-    )
+    this.text = "";
 
-    this.resetMouth()
+    this.currentCharacterIndex = 0;
+
+    this.timeSinceCharacter = 0;
+
+    this.visemeEngine.setViseme("rest");
+
+    this.engine.setTTSActive(false);
+
+    this.engine.clearSource("tts");
+
+    console.log("[SpeechAnimation] STOP");
+  }
+
+  /*
+   * Called from SpeechSynthesis
+   * when the browser reaches a
+   * speech boundary.
+   */
+  handleBoundary(charIndex: number) {
+    if (!this.speaking) {
+      return;
+    }
+
+    if (!this.text) {
+      return;
+    }
+
+    const safeIndex = Math.max(0, Math.min(charIndex, this.text.length - 1));
+
+    this.currentCharacterIndex = safeIndex;
+
+    this.timeSinceCharacter = 0;
+
+    const character = this.text[this.currentCharacterIndex];
+
+    const viseme = characterToViseme(character);
+
+    console.log("[SpeechAnimation] Boundary:", {
+      charIndex: safeIndex,
+      character,
+      viseme,
+    });
+
+    this.visemeEngine.setViseme(viseme);
   }
 
   update(delta: number) {
-  if (!this.speaking) {
-    return
+    if (!this.speaking) {
+      return;
+    }
+
+    this.timeSinceCharacter += delta;
+
+    /*
+     * Browser boundary events are not
+     * guaranteed to fire for every
+     * character on every browser.
+     *
+     * Use a lightweight fallback so
+     * the mouth doesn't freeze between
+     * boundary events.
+     */
+    if (this.timeSinceCharacter >= this.fallbackInterval) {
+      this.timeSinceCharacter = 0;
+
+      this.advanceFallbackCharacter();
+    }
+
+    this.visemeEngine.update(delta);
   }
 
-  this.time += delta
+  private advanceFallbackCharacter() {
+    if (!this.text) {
+      return;
+    }
 
-  const jaw =
-    0.2 +
-    Math.abs(
-      Math.sin(
-        this.time * 8
-      )
-    ) * 0.7
+    if (this.currentCharacterIndex >= this.text.length - 1) {
+      this.visemeEngine.setViseme("rest");
 
-  const value =
-    THREE.MathUtils.clamp(
-      jaw,
-      0,
-      1
-    )
+      return;
+    }
 
-  console.log(
-    '[SpeechAnimation] APPLY MOUTH:',
-    value.toFixed(2)
-  )
+    this.currentCharacterIndex++;
 
-  this.engine.setAvatarBlendshape(
-    'jawOpen',
-    value,
-    'tts'
-  )
+    const character = this.text[this.currentCharacterIndex];
 
-  this.engine.setAvatarBlendshape(
-    'mouthFunnel',
-    value * 0.2,
-    'tts'
-  )
+    const viseme = characterToViseme(character);
 
-  this.engine.setAvatarBlendshape(
-    'mouthPucker',
-    value * 0.1,
-    'tts'
-  )
-}
-  private resetMouth() {
-    this.engine.setAvatarBlendshape(
-      'jawOpen',
-      0,
-      'tts'
-    )
-
-    this.engine.setAvatarBlendshape(
-      'mouthFunnel',
-      0,
-      'tts'
-    )
-
-    this.engine.setAvatarBlendshape(
-      'mouthPucker',
-      0,
-      'tts'
-    )
-
-    this.engine.setAvatarBlendshape(
-      'mouthClose',
-      0,
-      'tts'
-    )
-
-    this.engine.setAvatarBlendshape(
-      'mouthSmile_L',
-      0,
-      'tts'
-    )
-
-    this.engine.setAvatarBlendshape(
-      'mouthSmile_R',
-      0,
-      'tts'
-    )
+    this.visemeEngine.setViseme(viseme);
   }
 }

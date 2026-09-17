@@ -13,191 +13,136 @@
  *   jawOpen
  */
 
-export const ARKIT_TO_AVATAR: Record<
-  string,
-  string
-> = {
+export const ARKIT_TO_AVATAR: Record<string, string> = {
   // =========================
   // Brows
   // =========================
 
-  browInnerUp:
-    'browInnerUp',
+  browInnerUp: "browInnerUp",
 
-  browDownLeft:
-    'browDown_L',
+  browDownLeft: "browDown_L",
 
-  browDownRight:
-    'browDown_R',
+  browDownRight: "browDown_R",
 
-  browOuterUpLeft:
-    'browOuterUp_L',
+  browOuterUpLeft: "browOuterUp_L",
 
-  browOuterUpRight:
-    'browOuterUp_R',
+  browOuterUpRight: "browOuterUp_R",
 
   // =========================
   // Eyes
   // =========================
 
-  eyeLookUpLeft:
-    'eyeLookUp_L',
+  eyeLookUpLeft: "eyeLookUp_L",
 
-  eyeLookUpRight:
-    'eyeLookUp_R',
+  eyeLookUpRight: "eyeLookUp_R",
 
-  eyeLookDownLeft:
-    'eyeLookDown_L',
+  eyeLookDownLeft: "eyeLookDown_L",
 
-  eyeLookDownRight:
-    'eyeLookDown_R',
+  eyeLookDownRight: "eyeLookDown_R",
 
-  eyeLookInLeft:
-    'eyeLookIn_L',
+  eyeLookInLeft: "eyeLookIn_L",
 
-  eyeLookInRight:
-    'eyeLookIn_R',
+  eyeLookInRight: "eyeLookIn_R",
 
-  eyeLookOutLeft:
-    'eyeLookOut_L',
+  eyeLookOutLeft: "eyeLookOut_L",
 
-  eyeLookOutRight:
-    'eyeLookOut_R',
+  eyeLookOutRight: "eyeLookOut_R",
 
-  eyeBlinkLeft:
-    'eyeBlink_L',
+  eyeBlinkLeft: "eyeBlink_L",
 
-  eyeBlinkRight:
-    'eyeBlink_R',
+  eyeBlinkRight: "eyeBlink_R",
 
-  eyeSquintLeft:
-    'eyeSquint_L',
+  eyeSquintLeft: "eyeSquint_L",
 
-  eyeSquintRight:
-    'eyeSquint_R',
+  eyeSquintRight: "eyeSquint_R",
 
-  eyeWideLeft:
-    'eyeWide_L',
+  eyeWideLeft: "eyeWide_L",
 
-  eyeWideRight:
-    'eyeWide_R',
+  eyeWideRight: "eyeWide_R",
 
   // =========================
   // Cheeks
   // =========================
 
-  cheekPuff:
-    'cheekPuff',
+  cheekPuff: "cheekPuff",
 
-  cheekSquintLeft:
-    'cheekSquint_L',
+  cheekSquintLeft: "cheekSquint_L",
 
-  cheekSquintRight:
-    'cheekSquint_R',
+  cheekSquintRight: "cheekSquint_R",
 
   // =========================
   // Nose
   // =========================
 
-  noseSneerLeft:
-    'noseSneer_L',
+  noseSneerLeft: "noseSneer_L",
 
-  noseSneerRight:
-    'noseSneer_R',
+  noseSneerRight: "noseSneer_R",
 
   // =========================
   // Jaw
   // =========================
 
-  jawOpen:
-    'jawOpen',
+  jawOpen: "jawOpen",
 
-  jawForward:
-    'jawForward',
+  jawForward: "jawForward",
 
-  jawLeft:
-    'jawLeft',
+  jawLeft: "jawLeft",
 
-  jawRight:
-    'jawRight',
+  jawRight: "jawRight",
 
   // =========================
   // Mouth
   // =========================
 
-  mouthClose:
-    'mouthClose',
+  mouthClose: "mouthClose",
 
-  mouthFunnel:
-    'mouthFunnel',
+  mouthFunnel: "mouthFunnel",
 
-  mouthPucker:
-    'mouthPucker',
+  mouthPucker: "mouthPucker",
 
-  mouthLeft:
-    'mouthLeft',
+  mouthLeft: "mouthLeft",
 
-  mouthRight:
-    'mouthRight',
+  mouthRight: "mouthRight",
 
-  mouthSmileLeft:
-    'mouthSmile_L',
+  mouthSmileLeft: "mouthSmile_L",
 
-  mouthSmileRight:
-    'mouthSmile_R',
+  mouthSmileRight: "mouthSmile_R",
 
-  mouthFrownLeft:
-    'mouthFrown_L',
+  mouthFrownLeft: "mouthFrown_L",
 
-  mouthFrownRight:
-    'mouthFrown_R',
+  mouthFrownRight: "mouthFrown_R",
 
-  mouthDimpleLeft:
-    'mouthDimple_L',
+  mouthDimpleLeft: "mouthDimple_L",
 
-  mouthDimpleRight:
-    'mouthDimple_R',
+  mouthDimpleRight: "mouthDimple_R",
 
-  mouthStretchLeft:
-    'mouthStretch_L',
+  mouthStretchLeft: "mouthStretch_L",
 
-  mouthStretchRight:
-    'mouthStretch_R',
+  mouthStretchRight: "mouthStretch_R",
 
-  mouthRollLower:
-    'mouthRollLower',
+  mouthRollLower: "mouthRollLower",
 
-  mouthRollUpper:
-    'mouthRollUpper',
+  mouthRollUpper: "mouthRollUpper",
 
-  mouthShrugLower:
-    'mouthShrugLower',
+  mouthShrugLower: "mouthShrugLower",
 
-  mouthShrugUpper:
-    'mouthShrugUpper',
+  mouthShrugUpper: "mouthShrugUpper",
 
-  mouthPressLeft:
-    'mouthPress_L',
+  mouthPressLeft: "mouthPress_L",
 
-  mouthPressRight:
-    'mouthPress_R',
+  mouthPressRight: "mouthPress_R",
 
-  mouthLowerDownLeft:
-    'mouthLowerDown_L',
+  mouthLowerDownLeft: "mouthLowerDown_L",
 
-  mouthLowerDownRight:
-    'mouthLowerDown_R',
+  mouthLowerDownRight: "mouthLowerDown_R",
 
-  mouthUpperUpLeft:
-    'mouthUpperUp_L',
+  mouthUpperUpLeft: "mouthUpperUp_L",
 
-  mouthUpperUpRight:
-    'mouthUpperUp_R',
+  mouthUpperUpRight: "mouthUpperUp_R",
 
   // =========================
   // Tongue
   // =========================
 
-  tongueOut:
-    'tongueOut',
-}
+  tongueOut: "tongueOut",
+};
