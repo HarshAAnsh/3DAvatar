@@ -131,3 +131,4 @@ export function getDemoResponse(input: string): string {
 
   return responses.default;
 }
+
