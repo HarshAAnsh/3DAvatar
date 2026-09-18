@@ -1,179 +1,529 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { useAvatarStore } from "../store/avatarStore";
-
 import { useConversationStore } from "../store/conversationStore";
 
-import { SpeechRecognitionController } from "../avatar/SpeechRecognitionController";
+import {
+  SpeechRecognitionController,
+} from "../avatar/SpeechRecognitionController";
 
-import { TTSController } from "../avatar/TTSController";
+import {
+  TTSController,
+} from "../avatar/TTSController";
 
-import { getDemoResponse } from "../avatar/DemoResponses";
+import {
+  getDemoResponse,
+} from "../avatar/DemoResponses";
+
+import {
+  getAIResponse,
+  type ChatMessage,
+} from "../services/aiService";
 
 export default function ConversationPanel() {
-  const mode = useAvatarStore((state) => state.mode);
+  // ==================================================
+  // Avatar state
+  // ==================================================
 
-  const speechAnimation = useAvatarStore((state) => state.speechAnimation);
+  const mode = useAvatarStore(
+    (state) => state.mode
+  );
 
-  const state = useConversationStore((state) => state.state);
+  const speechAnimation = useAvatarStore(
+    (state) => state.speechAnimation
+  );
 
-  const transcript = useConversationStore((state) => state.transcript);
+  // ==================================================
+  // Conversation store
+  // ==================================================
 
-  const response = useConversationStore((state) => state.response);
+  const state = useConversationStore(
+    (state) => state.state
+  );
 
-  const setState = useConversationStore((state) => state.setState);
+  const transcript = useConversationStore(
+    (state) => state.transcript
+  );
 
-  const setTranscript = useConversationStore((state) => state.setTranscript);
+  const response = useConversationStore(
+    (state) => state.response
+  );
 
-  const setResponse = useConversationStore((state) => state.setResponse);
+  const setState = useConversationStore(
+    (state) => state.setState
+  );
+
+  const setTranscript = useConversationStore(
+    (state) => state.setTranscript
+  );
+
+  const setResponse = useConversationStore(
+    (state) => state.setResponse
+  );
+
+  // ==================================================
+  // Local UI state
+  // ==================================================
 
   const [text, setText] = useState("");
 
-  const [voiceSupported, setVoiceSupported] = useState(true);
+  const [voiceSupported, setVoiceSupported] =
+    useState(true);
 
-  const [showConversation, setShowConversation] = useState(false);
+  const [showConversation, setShowConversation] =
+    useState(false);
 
-  const ttsRef = useRef<TTSController | null>(null);
+  // ==================================================
+  // Controller refs
+  // ==================================================
 
-  const recognitionRef = useRef<SpeechRecognitionController | null>(null);
+  const ttsRef =
+    useRef<TTSController | null>(null);
 
-  const responseRef = useRef(response);
+  const recognitionRef =
+    useRef<SpeechRecognitionController | null>(
+      null
+    );
+
+  // ==================================================
+  // Latest response ref
+  // ==================================================
+
+  const responseRef =
+    useRef(response);
 
   useEffect(() => {
     responseRef.current = response;
   }, [response]);
 
+  // ==================================================
+  // Latest mode ref
+  //
+  // Prevents speech recognition from using
+  // an old "demo/live" value.
+  // ==================================================
+
+  const modeRef =
+    useRef(mode);
+
   useEffect(() => {
-    const tts = new TTSController({
-      onStart: () => {
-        console.log("[Conversation] TTS started");
+    modeRef.current = mode;
+  }, [mode]);
 
-        setState("speaking");
+  // ==================================================
+  // Latest speech animation ref
+  // ==================================================
 
-        speechAnimation?.start(responseRef.current);
-      },
+  const speechAnimationRef =
+    useRef(speechAnimation);
 
-      onEnd: () => {
-        console.log("[Conversation] TTS ended");
+  useEffect(() => {
+    speechAnimationRef.current =
+      speechAnimation;
+  }, [speechAnimation]);
 
-        speechAnimation?.stop();
+  // ==================================================
+  // Conversation history
+  // ==================================================
 
-        setState("idle");
-      },
+  const historyRef =
+    useRef<ChatMessage[]>([]);
 
-      onError: () => {
-        speechAnimation?.stop();
-        setState("idle");
-      },
-    });
+  // ==================================================
+  // Add a conversation turn
+  //
+  // The explicit ChatMessage[] type + "as const"
+  // prevents role from becoming generic string.
+  // ==================================================
 
-    ttsRef.current = tts;
+  const addToHistory = useCallback(
+    (
+      userMessage: string,
+      assistantMessage: string
+    ) => {
+      const updatedHistory: ChatMessage[] = [
+        ...historyRef.current,
 
-    const recognition = new SpeechRecognitionController({
-      onStart: () => {
-        console.log("[Conversation] Listening");
+        {
+          role: "user" as const,
+          text: userMessage,
+        },
+
+        {
+          role: "assistant" as const,
+          text: assistantMessage,
+        },
+      ].slice(-10);
+
+      historyRef.current =
+        updatedHistory;
+    },
+    []
+  );
+
+  // ==================================================
+  // Central message handler
+  //
+  // Both text and voice input use this function.
+  // ==================================================
+
+  const handleUserMessage =
+    useCallback(
+      async (userMessage: string) => {
+        const trimmed =
+          userMessage.trim();
+
+        if (!trimmed) {
+          return;
+        }
+
+        // Only allow conversation in Demo mode
+        if (modeRef.current !== "demo") {
+          console.warn(
+            "[Conversation] Demo mode required"
+          );
+
+          return;
+        }
+
+        console.log(
+          "[Conversation] User:",
+          trimmed
+        );
+
+        setTranscript(trimmed);
 
         setShowConversation(true);
-        setState("listening");
-      },
-
-      onResult: (recognizedText) => {
-        console.log("[Conversation] User:", recognizedText);
-
-        setTranscript(recognizedText);
 
         setState("thinking");
 
-        const demoResponse = getDemoResponse(recognizedText);
+        try {
+          // ==========================================
+          // Ask Gemini
+          // ==========================================
 
-        console.log("[Conversation] Response:", demoResponse);
+          console.log(
+            "[Conversation] Asking AI..."
+          );
 
-        setResponse(demoResponse);
+          const aiResponse =
+            await getAIResponse(
+              trimmed,
+              historyRef.current
+            );
 
-        setShowConversation(true);
+          console.log(
+            "[Conversation] AI:",
+            aiResponse
+          );
 
-        ttsRef.current?.speak(demoResponse);
+          // ==========================================
+          // Store response
+          // ==========================================
+
+          setResponse(aiResponse);
+
+          responseRef.current =
+            aiResponse;
+
+          // ==========================================
+          // Update history
+          // ==========================================
+
+          addToHistory(
+            trimmed,
+            aiResponse
+          );
+
+          // ==========================================
+          // Speak response
+          // ==========================================
+
+          ttsRef.current?.speak(
+            aiResponse
+          );
+        } catch (error) {
+          // ==========================================
+          // Gemini failed
+          //
+          // Use local DemoResponses fallback
+          // ==========================================
+
+          console.error(
+            "[Conversation] AI failed:",
+            error
+          );
+
+          const fallbackResponse =
+            getDemoResponse(trimmed);
+
+          console.log(
+            "[Conversation] Fallback:",
+            fallbackResponse
+          );
+
+          // ==========================================
+          // Store fallback response
+          // ==========================================
+
+          setResponse(
+            fallbackResponse
+          );
+
+          responseRef.current =
+            fallbackResponse;
+
+          // ==========================================
+          // Store fallback history
+          // ==========================================
+
+          addToHistory(
+            trimmed,
+            fallbackResponse
+          );
+
+          // ==========================================
+          // Speak fallback
+          // ==========================================
+
+          ttsRef.current?.speak(
+            fallbackResponse
+          );
+        }
       },
+      [
+        addToHistory,
+        setResponse,
+        setState,
+        setTranscript,
+      ]
+    );
 
-      onEnd: () => {
-        console.log("[Conversation] Recognition ended");
-      },
+  // ==================================================
+  // Initialize TTS and Speech Recognition
+  // ==================================================
 
-      onError: (error) => {
-        console.error("[Conversation] Recognition error:", error);
+  useEffect(() => {
+    // =================================================
+    // TTS
+    // =================================================
 
-        setState("idle");
-      },
-    });
+    const tts =
+      new TTSController({
+        onStart: () => {
+          console.log(
+            "[Conversation] TTS started"
+          );
 
-    recognitionRef.current = recognition;
+          setState("speaking");
 
-    setVoiceSupported(recognition.isSupported());
+          speechAnimationRef.current?.start(
+            responseRef.current
+          );
+        },
+
+        onEnd: () => {
+          console.log(
+            "[Conversation] TTS ended"
+          );
+
+          speechAnimationRef.current?.stop();
+
+          setState("idle");
+        },
+
+        onError: (error) => {
+          console.error(
+            "[Conversation] TTS error:",
+            error
+          );
+
+          speechAnimationRef.current?.stop();
+
+          setState("idle");
+        },
+      });
+
+    ttsRef.current = tts;
+
+    // =================================================
+    // Speech Recognition
+    // =================================================
+
+    const recognition =
+      new SpeechRecognitionController({
+        onStart: () => {
+          console.log(
+            "[Conversation] Listening"
+          );
+
+          setShowConversation(true);
+
+          setState("listening");
+        },
+
+        onResult: (recognizedText) => {
+          console.log(
+            "[Conversation] Voice input:",
+            recognizedText
+          );
+
+          void handleUserMessage(
+            recognizedText
+          );
+        },
+
+        onEnd: () => {
+          console.log(
+            "[Conversation] Recognition ended"
+          );
+        },
+
+        onError: (error) => {
+          console.error(
+            "[Conversation] Recognition error:",
+            error
+          );
+
+          setState("idle");
+        },
+      });
+
+    recognitionRef.current =
+      recognition;
+
+    setVoiceSupported(
+      recognition.isSupported()
+    );
+
+    // =================================================
+    // Cleanup
+    // =================================================
 
     return () => {
       recognition.stop();
-      tts.stop();
-      speechAnimation?.stop();
 
-      recognitionRef.current = null;
-      ttsRef.current = null;
+      tts.stop();
+
+      speechAnimationRef.current?.stop();
+
+      recognitionRef.current =
+        null;
+
+      ttsRef.current =
+        null;
     };
-  }, [speechAnimation, setState, setTranscript, setResponse]);
+  }, [
+    handleUserMessage,
+    setState,
+  ]);
+
+  // ==================================================
+  // Text submission
+  // ==================================================
 
   const submitText = () => {
-    const trimmed = text.trim();
+    const trimmed =
+      text.trim();
 
-    if (!trimmed) return;
+    if (!trimmed) {
+      return;
+    }
 
-    if (mode !== "demo") return;
+    if (modeRef.current !== "demo") {
+      return;
+    }
 
-    console.log("[Conversation] Text:", trimmed);
-
-    setTranscript(trimmed);
     setText("");
-    setShowConversation(true);
 
-    setState("thinking");
-
-    const demoResponse = getDemoResponse(trimmed);
-
-    setResponse(demoResponse);
-
-    ttsRef.current?.speak(demoResponse);
+    void handleUserMessage(
+      trimmed
+    );
   };
+
+  // ==================================================
+  // Start voice recognition
+  // ==================================================
 
   const startListening = () => {
-    if (mode !== "demo") return;
+    if (modeRef.current !== "demo") {
+      return;
+    }
 
     if (!voiceSupported) {
-      console.warn("[Conversation] Voice recognition not supported");
+      console.warn(
+        "[Conversation] Voice recognition not supported"
+      );
 
       return;
     }
 
-    if (state === "listening" || state === "thinking" || state === "speaking") {
+    if (
+      state === "listening" ||
+      state === "thinking" ||
+      state === "speaking"
+    ) {
       return;
     }
 
-    recognitionRef.current?.start();
+    console.log(
+      "[Conversation] Starting voice recognition"
+    );
+
+    try {
+      recognitionRef.current?.start();
+    } catch (error) {
+      console.error(
+        "[Conversation] Could not start recognition:",
+        error
+      );
+
+      setState("idle");
+    }
   };
 
+  // ==================================================
+  // Stop conversation
+  // ==================================================
+
   const stopConversation = () => {
+    console.log(
+      "[Conversation] Stopping"
+    );
+
     recognitionRef.current?.stop();
+
     ttsRef.current?.stop();
 
-    speechAnimation?.stop();
+    speechAnimationRef.current?.stop();
 
     setState("idle");
   };
 
-  const demoMode = mode === "demo";
+  // ==================================================
+  // UI state
+  // ==================================================
 
-  const isListening = state === "listening";
+  const demoMode =
+    mode === "demo";
 
-  const isThinking = state === "thinking";
+  const isListening =
+    state === "listening";
 
-  const isSpeaking = state === "speaking";
+  const isThinking =
+    state === "thinking";
+
+  const isSpeaking =
+    state === "speaking";
+
+  // ==================================================
+  // UI
+  // ==================================================
 
   return (
     <aside
@@ -187,10 +537,14 @@ export default function ConversationPanel() {
         -translate-x-1/2
       "
     >
-      {/* Expanded conversation */}
-      {showConversation && (transcript || response) && (
-        <div
-          className="
+      {/* =================================================
+          Conversation preview
+          ================================================= */}
+
+      {showConversation &&
+        (transcript || response) && (
+          <div
+            className="
               mb-2
               rounded-xl
               border
@@ -201,34 +555,71 @@ export default function ConversationPanel() {
               shadow-xl
               backdrop-blur-xl
             "
-        >
-          {transcript && (
-            <div className="flex gap-2">
-              <span className="text-[10px] font-medium uppercase text-zinc-600">
-                You
-              </span>
+          >
+            {/* User */}
 
-              <p className="min-w-0 flex-1 truncate text-xs text-zinc-300">
-                {transcript}
-              </p>
-            </div>
-          )}
+            {transcript && (
+              <div className="flex gap-2">
+                <span
+                  className="
+                    text-[10px]
+                    font-medium
+                    uppercase
+                    text-zinc-600
+                  "
+                >
+                  You
+                </span>
 
-          {response && (
-            <div className="mt-1 flex gap-2">
-              <span className="text-[10px] font-medium uppercase text-zinc-600">
-                AI
-              </span>
+                <p
+                  className="
+                    min-w-0
+                    flex-1
+                    truncate
+                    text-xs
+                    text-zinc-300
+                  "
+                >
+                  {transcript}
+                </p>
+              </div>
+            )}
 
-              <p className="min-w-0 flex-1 truncate text-xs text-zinc-300">
-                {response}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
+            {/* AI */}
 
-      {/* Main compact control */}
+            {response && (
+              <div className="mt-1 flex gap-2">
+                <span
+                  className="
+                    text-[10px]
+                    font-medium
+                    uppercase
+                    text-zinc-600
+                  "
+                >
+                  AI
+                </span>
+
+                <p
+                  className="
+                    min-w-0
+                    flex-1
+                    truncate
+                    text-xs
+                    text-zinc-300
+                  "
+                >
+                  {response}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+      {/* =================================================
+          Main control
+          ================================================= */}
+
       <div
         className="
           rounded-xl
@@ -241,9 +632,15 @@ export default function ConversationPanel() {
         "
       >
         <div className="flex items-center gap-2">
+          {/* Chat toggle */}
+
           <button
             type="button"
-            onClick={() => setShowConversation((value) => !value)}
+            onClick={() =>
+              setShowConversation(
+                (value) => !value
+              )
+            }
             className="
               hidden
               rounded-lg
@@ -254,22 +651,39 @@ export default function ConversationPanel() {
               py-2
               text-xs
               text-zinc-400
+              hover:bg-zinc-800
               sm:block
             "
           >
-            {showConversation ? "Hide" : "Chat"}
+            {showConversation
+              ? "Hide"
+              : "Chat"}
           </button>
+
+          {/* Text input */}
 
           <input
             value={text}
-            onChange={(event) => setText(event.target.value)}
+            onChange={(event) =>
+              setText(
+                event.target.value
+              )
+            }
             onKeyDown={(event) => {
-              if (event.key === "Enter") {
+              if (
+                event.key === "Enter"
+              ) {
+                event.preventDefault();
+
                 submitText();
               }
             }}
             disabled={!demoMode}
-            placeholder={demoMode ? "Ask the avatar..." : "Switch to Demo mode"}
+            placeholder={
+              demoMode
+                ? "Ask the avatar..."
+                : "Switch to Demo mode"
+            }
             className="
               min-w-0
               flex-1
@@ -288,9 +702,13 @@ export default function ConversationPanel() {
             "
           />
 
+          {/* Voice */}
+
           <button
             type="button"
-            onClick={startListening}
+            onClick={
+              startListening
+            }
             disabled={
               !demoMode ||
               !voiceSupported ||
@@ -310,15 +728,30 @@ export default function ConversationPanel() {
               hover:bg-zinc-800
               disabled:opacity-30
             "
-            title="Voice input"
+            title={
+              voiceSupported
+                ? "Voice input"
+                : "Voice recognition is not supported"
+            }
           >
-            {isListening ? "●" : "🎤"}
+            {isListening
+              ? "●"
+              : "🎤"}
           </button>
+
+          {/* Send */}
 
           <button
             type="button"
-            onClick={submitText}
-            disabled={!demoMode || !text.trim() || isThinking || isSpeaking}
+            onClick={
+              submitText
+            }
+            disabled={
+              !demoMode ||
+              !text.trim() ||
+              isThinking ||
+              isSpeaking
+            }
             className="
               rounded-lg
               bg-white
@@ -334,9 +767,13 @@ export default function ConversationPanel() {
             Send
           </button>
 
+          {/* Stop */}
+
           <button
             type="button"
-            onClick={stopConversation}
+            onClick={
+              stopConversation
+            }
             className="
               rounded-lg
               border
@@ -353,16 +790,33 @@ export default function ConversationPanel() {
           </button>
         </div>
 
-        {/* Small state indicator */}
-        <div className="mt-1 flex items-center justify-center">
-          <span className="text-[10px] text-zinc-600">
+        {/* =================================================
+            Status
+            ================================================= */}
+
+        <div
+          className="
+            mt-1
+            flex
+            items-center
+            justify-center
+          "
+        >
+          <span
+            className="
+              text-[10px]
+              text-zinc-600
+            "
+          >
             {isListening
               ? "Listening..."
               : isThinking
                 ? "Thinking..."
                 : isSpeaking
                   ? "Speaking..."
-                  : "Voice + text interaction"}
+                  : !voiceSupported
+                    ? "Text interaction • Voice unavailable"
+                    : "Voice + text interaction"}
           </span>
         </div>
       </div>
