@@ -1,23 +1,31 @@
-import { FacialAnimationEngine } from "./FacialAnimationEngine";
+import { SpeechTimeline, type SpeechFrame } from "./SpeechTimeline";
+
+import type { VisemeType } from "./VisemeEngine";
+
 import { VisemeEngine } from "./VisemeEngine";
-import { characterToViseme } from "./VisemeMapper";
+
+import { FacialAnimationEngine } from "./FacialAnimationEngine";
 
 export class SpeechAnimation {
   private engine: FacialAnimationEngine;
+
   private visemeEngine: VisemeEngine;
 
-  private speaking = false;
+  private timeline = new SpeechTimeline();
+
+  private frames: SpeechFrame[] = [];
+
+  private frameIndex = 0;
+
+  private frameElapsed = 0;
+
   private text = "";
 
-  private currentCharacterIndex = 0;
+  private speaking = false;
 
-  private timeSinceCharacter = 0;
+  private boundaryDriven = false;
 
-  /*
-   * Used as a fallback between browser
-   * speech boundary events.
-   */
-  private fallbackInterval = 0.08;
+  private lastBoundaryIndex = -1;
 
   constructor(engine: FacialAnimationEngine) {
     this.engine = engine;
@@ -27,14 +35,24 @@ export class SpeechAnimation {
     console.log("[SpeechAnimation] Initialized");
   }
 
-  start(text = "") {
-    this.speaking = true;
+  // ==================================================
+  // Start
+  // ==================================================
 
+  start(text: string) {
     this.text = text;
 
-    this.currentCharacterIndex = 0;
+    this.speaking = true;
 
-    this.timeSinceCharacter = 0;
+    this.boundaryDriven = false;
+
+    this.lastBoundaryIndex = -1;
+
+    this.frameElapsed = 0;
+
+    this.frames = this.timeline.build(text);
+
+    this.frameIndex = 0;
 
     this.engine.setTTSActive(true);
 
@@ -43,16 +61,26 @@ export class SpeechAnimation {
     console.log("[SpeechAnimation] START");
   }
 
+  // ==================================================
+  // Stop
+  // ==================================================
+
   stop() {
     this.speaking = false;
 
     this.text = "";
 
-    this.currentCharacterIndex = 0;
+    this.frames = [];
 
-    this.timeSinceCharacter = 0;
+    this.frameIndex = 0;
 
-    this.visemeEngine.setViseme("rest");
+    this.frameElapsed = 0;
+
+    this.boundaryDriven = false;
+
+    this.lastBoundaryIndex = -1;
+
+    this.visemeEngine.reset();
 
     this.engine.setTTSActive(false);
 
@@ -61,32 +89,31 @@ export class SpeechAnimation {
     console.log("[SpeechAnimation] STOP");
   }
 
-  /*
-   * Called from SpeechSynthesis
-   * when the browser reaches a
-   * speech boundary.
-   */
-  handleBoundary(charIndex: number) {
+  // ==================================================
+  // Boundary event from SpeechSynthesis
+  // ==================================================
+
+  handleBoundary(charIndex: number, charLength = 0, elapsedTime = 0) {
     if (!this.speaking) {
       return;
     }
 
-    if (!this.text) {
+    if (charIndex < this.lastBoundaryIndex) {
       return;
     }
 
-    const safeIndex = Math.max(0, Math.min(charIndex, this.text.length - 1));
+    this.lastBoundaryIndex = charIndex;
 
-    this.currentCharacterIndex = safeIndex;
+    this.boundaryDriven = true;
 
-    this.timeSinceCharacter = 0;
+    const character = this.text[charIndex]?.toLowerCase() ?? "";
 
-    const character = this.text[this.currentCharacterIndex];
-
-    const viseme = characterToViseme(character);
+    const viseme = this.characterToViseme(character);
 
     console.log("[SpeechAnimation] Boundary:", {
-      charIndex: safeIndex,
+      charIndex,
+      charLength,
+      elapsedTime,
       character,
       viseme,
     });
@@ -94,48 +121,123 @@ export class SpeechAnimation {
     this.visemeEngine.setViseme(viseme);
   }
 
+  // ==================================================
+  // Update
+  // ==================================================
+
   update(delta: number) {
     if (!this.speaking) {
       return;
     }
 
-    this.timeSinceCharacter += delta;
+    // Boundary-driven mode:
+    // SpeechSynthesis is telling us where it is.
+    if (this.boundaryDriven) {
+      this.visemeEngine.update(delta);
 
-    /*
-     * Browser boundary events are not
-     * guaranteed to fire for every
-     * character on every browser.
-     *
-     * Use a lightweight fallback so
-     * the mouth doesn't freeze between
-     * boundary events.
-     */
-    if (this.timeSinceCharacter >= this.fallbackInterval) {
-      this.timeSinceCharacter = 0;
+      return;
+    }
 
-      this.advanceFallbackCharacter();
+    // -----------------------------------------------
+    // Fallback mode
+    //
+    // Used when browser speech synthesis doesn't emit
+    // boundary events.
+    // -----------------------------------------------
+
+    if (this.frames.length === 0) {
+      this.visemeEngine.update(delta);
+
+      return;
+    }
+
+    this.frameElapsed += delta;
+
+    while (this.frameElapsed >= this.frames[this.frameIndex].duration) {
+      this.frameElapsed -= this.frames[this.frameIndex].duration;
+
+      this.frameIndex++;
+
+      if (this.frameIndex >= this.frames.length) {
+        this.frameIndex = this.frames.length - 1;
+
+        this.visemeEngine.setViseme("rest");
+
+        break;
+      }
+
+      this.visemeEngine.setViseme(this.frames[this.frameIndex].viseme);
+    }
+
+    if (this.frameIndex === 0 && this.frameElapsed === 0) {
+      this.visemeEngine.setViseme(this.frames[0].viseme);
     }
 
     this.visemeEngine.update(delta);
   }
 
-  private advanceFallbackCharacter() {
-    if (!this.text) {
-      return;
+  // ==================================================
+  // State
+  // ==================================================
+
+  isSpeaking() {
+    return this.speaking;
+  }
+
+  // ==================================================
+  // Character → viseme
+  //
+  // Used for browser boundary events.
+  // ==================================================
+
+  private characterToViseme(character: string): VisemeType {
+    switch (character) {
+      case "a":
+        return "A";
+
+      case "e":
+        return "E";
+
+      case "i":
+      case "y":
+        return "I";
+
+      case "o":
+        return "O";
+
+      case "u":
+      case "w":
+        return "U";
+
+      case "m":
+      case "b":
+      case "p":
+        return "M";
+
+      case "f":
+      case "v":
+        return "F";
+
+      case "l":
+      case "r":
+        return "L";
+
+      case "s":
+      case "z":
+      case "c":
+      case "x":
+      case "j":
+      case "q":
+      case "k":
+      case "g":
+      case "t":
+      case "d":
+      case "n":
+      case "h":
+        return "S";
+
+      default:
+        return "rest";
     }
-
-    if (this.currentCharacterIndex >= this.text.length - 1) {
-      this.visemeEngine.setViseme("rest");
-
-      return;
-    }
-
-    this.currentCharacterIndex++;
-
-    const character = this.text[this.currentCharacterIndex];
-
-    const viseme = characterToViseme(character);
-
-    this.visemeEngine.setViseme(viseme);
   }
 }

@@ -1,90 +1,239 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useAvatarStore } from "../store/avatarStore";
 
 export default function TrackingControls() {
   const headPose = useAvatarStore((state) => state.headPose);
 
-  const [smoothing, setSmoothing] = useState(0.15);
+  const [trackingActive, setTrackingActive] = useState(false);
 
-  const calibrate = () => {
-    if (!headPose) return;
+  const [calibrated, setCalibrated] = useState(false);
+
+  // ==================================================
+  // Poll controller state
+  // ==================================================
+
+  useEffect(() => {
+    const updateStatus = () => {
+      setTrackingActive(Boolean(headPose?.isTrackingActive()));
+
+      setCalibrated(Boolean(headPose?.isCalibrated()));
+    };
+
+    updateStatus();
+
+    const interval = window.setInterval(updateStatus, 250);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [headPose]);
+
+  // ==================================================
+  // Calibrate
+  // ==================================================
+
+  const handleCalibrate = () => {
+    if (!headPose) {
+      return;
+    }
 
     headPose.calibrate();
+
+    setCalibrated(headPose.isCalibrated());
   };
 
-  const handleSmoothingChange = (value: number) => {
-    setSmoothing(value);
+  // ==================================================
+  // Reset
+  // ==================================================
 
-    headPose?.setSmoothing(value);
+  const handleReset = () => {
+    if (!headPose) {
+      return;
+    }
+
+    headPose.reset();
+
+    setCalibrated(false);
+
+    setTrackingActive(false);
   };
 
   return (
     <aside
       className="
-        absolute
-        left-5
-        top-20
-        z-30
-        w-64
-        rounded-2xl
-        border
-        border-white/10
-        bg-black/80
-        p-4
-        text-white
-        shadow-2xl
-        backdrop-blur-xl
-      "
+    w-full
+    rounded-xl
+    border
+    border-white/10
+    bg-black/80
+    p-3
+    text-white
+    shadow-xl
+    backdrop-blur-xl
+  "
     >
-      <div className="mb-4">
-        <p className="text-sm font-semibold">Head Tracking</p>
+      {/* ==================================================
+          Header
+          ================================================== */}
 
-        <p className="mt-1 text-xs text-zinc-400">
-          Calibrate your neutral position
-        </p>
-      </div>
-
-      <button
-        onClick={calibrate}
-        disabled={!headPose}
-        className="
-          w-full
-          rounded-lg
-          bg-white
-          px-3
-          py-2
-          text-sm
-          font-medium
-          text-black
-          transition
-          hover:bg-zinc-200
-          disabled:cursor-not-allowed
-          disabled:opacity-40
-        "
-      >
-        Calibrate Head
-      </button>
-
-      <div className="mt-5">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs text-zinc-400">Smoothing</span>
-
-          <span className="text-xs text-zinc-300">{smoothing.toFixed(2)}</span>
+      <div className="mb-3">
+        <div
+          className="
+            text-[10px]
+            font-semibold
+            uppercase
+            tracking-wider
+            text-zinc-400
+          "
+        >
+          Tracking
         </div>
 
-        <input
-          type="range"
-          min="0.05"
-          max="0.5"
-          step="0.01"
-          value={smoothing}
-          onChange={(event) =>
-            handleSmoothingChange(Number(event.target.value))
-          }
-          className="w-full"
-        />
+        <div className="mt-1 text-xs text-zinc-200">Head pose controls</div>
       </div>
+
+      {/* ==================================================
+          Tracking status
+          ================================================== */}
+
+      <div
+        className="
+          mb-3
+          flex
+          items-center
+          justify-between
+          rounded-lg
+          border
+          border-white/10
+          bg-zinc-900/80
+          px-2
+          py-2
+        "
+      >
+        <span
+          className="
+            text-[10px]
+            text-zinc-500
+          "
+        >
+          Tracking
+        </span>
+
+        <span
+          className={`
+            text-[10px]
+            font-semibold
+            ${trackingActive ? "text-emerald-400" : "text-zinc-500"}
+          `}
+        >
+          {trackingActive ? "ACTIVE" : "INACTIVE"}
+        </span>
+      </div>
+
+      {/* ==================================================
+          Calibration status
+          ================================================== */}
+
+      <div
+        className="
+          mb-3
+          flex
+          items-center
+          justify-between
+          rounded-lg
+          border
+          border-white/10
+          bg-zinc-900/80
+          px-2
+          py-2
+        "
+      >
+        <span
+          className="
+            text-[10px]
+            text-zinc-500
+          "
+        >
+          Calibration
+        </span>
+
+        <span
+          className={`
+            text-[10px]
+            font-semibold
+            ${calibrated ? "text-emerald-400" : "text-amber-400"}
+          `}
+        >
+          {calibrated ? "READY" : "NOT SET"}
+        </span>
+      </div>
+
+      {/* ==================================================
+          Buttons
+          ================================================== */}
+
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={handleCalibrate}
+          disabled={!headPose}
+          className="
+            flex-1
+            rounded-lg
+            bg-white
+            px-2
+            py-2
+            text-[10px]
+            font-semibold
+            text-black
+            transition
+            hover:bg-zinc-200
+            disabled:cursor-not-allowed
+            disabled:opacity-30
+          "
+        >
+          Calibrate
+        </button>
+
+        <button
+          type="button"
+          onClick={handleReset}
+          disabled={!headPose}
+          className="
+            flex-1
+            rounded-lg
+            border
+            border-white/10
+            bg-zinc-900
+            px-2
+            py-2
+            text-[10px]
+            text-zinc-300
+            transition
+            hover:bg-zinc-800
+            disabled:cursor-not-allowed
+            disabled:opacity-30
+          "
+        >
+          Reset
+        </button>
+      </div>
+
+      {/* ==================================================
+          Help text
+          ================================================== */}
+
+      <p
+        className="
+          mt-3
+          text-[9px]
+          leading-relaxed
+          text-zinc-600
+        "
+      >
+        Center your face and click Calibrate to establish the neutral head pose.
+      </p>
     </aside>
   );
 }

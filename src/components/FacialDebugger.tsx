@@ -6,24 +6,18 @@ const DEBUG_BLENDSHAPES = [
   "browInnerUp",
   "browDown_L",
   "browDown_R",
-
   "eyeBlink_L",
   "eyeBlink_R",
-
   "jawOpen",
-
   "mouthSmile_L",
   "mouthSmile_R",
-
   "mouthPucker",
   "mouthFunnel",
-
   "mouthClose",
 ];
 
 export default function FacialDebugger() {
   const scene = useAvatarStore((state) => state.scene);
-
   const engine = useAvatarStore((state) => state.engine);
 
   const [values, setValues] = useState<Record<string, number>>({});
@@ -43,120 +37,262 @@ export default function FacialDebugger() {
     if (!engine) return;
 
     engine.reset();
-
     setValues({});
   };
 
   return (
     <aside
       className="
-    absolute
-    right-5
-    top-20
-    z-30
-    w-[min(320px,calc(100vw-2rem))]
-    max-h-[calc(100dvh-7rem)]
-    overflow-y-auto
-    rounded-2xl
+    w-full
+    overflow-hidden
+    rounded-xl
     border
     border-white/10
-    bg-black/80
-    p-4
-    text-white
+    bg-black/90
     shadow-2xl
     backdrop-blur-xl
   "
     >
-      {/* Header */}
+      {/* =====================================================
+          HEADER
+      ====================================================== */}
 
-      <div className="mb-4">
-        <h2 className="text-sm font-semibold">Facial Debugger</h2>
+      <div
+        className="
+          border-b
+          border-white/10
+          px-3
+          py-2.5
 
-        <p className="mt-1 text-xs text-zinc-500">
-          ARKit-style blendshape controls
-        </p>
-      </div>
+          sm:px-3.5
+          sm:py-3
+        "
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h2
+              className="
+                truncate
+                text-xs
+                font-semibold
+                text-white
 
-      {/* Avatar Status */}
+                sm:text-sm
+              "
+            >
+              Facial Debugger
+            </h2>
 
-      <div className="mb-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-        <div className="text-xs text-zinc-400">Avatar</div>
+            <p
+              className="
+                mt-0.5
+                truncate
+                text-[9px]
+                text-zinc-500
 
-        <div
-          className={`mt-1 text-sm ${
-            scene ? "text-green-400" : "text-yellow-400"
-          }`}
-        >
-          <span className="mr-1">●</span>
-
-          {scene ? "Connected" : "Loading..."}
-        </div>
-      </div>
-
-      {/* Blendshape Controls */}
-
-      {scene && engine && (
-        <>
-          <div className="space-y-4">
-            {DEBUG_BLENDSHAPES.map((name) => {
-              const value = values[name] ?? 0;
-
-              return (
-                <div key={name}>
-                  {/* Label */}
-
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <span className="min-w-0 truncate text-xs text-zinc-300">
-                      {name}
-                    </span>
-
-                    <span className="shrink-0 font-mono text-xs text-zinc-500">
-                      {value.toFixed(2)}
-                    </span>
-                  </div>
-
-                  {/* Slider */}
-
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={value}
-                    onChange={(event) =>
-                      updateBlendshape(name, Number(event.target.value))
-                    }
-                    className="w-full cursor-pointer"
-                  />
-                </div>
-              );
-            })}
+                sm:text-[10px]
+              "
+            >
+              ARKit blendshape controls
+            </p>
           </div>
 
-          {/* Reset */}
-
-          <button
-            type="button"
-            onClick={resetFace}
+          <span
             className="
-              mt-5
-              w-full
-              rounded-lg
+              shrink-0
+              rounded-full
               border
               border-white/10
               bg-white/5
-              px-3
-              py-2
-              text-xs
-              text-zinc-300
-              transition
-              hover:bg-white/10
+              px-2
+              py-0.5
+              text-[9px]
+              text-zinc-400
             "
           >
-            Reset Face
-          </button>
-        </>
-      )}
+            11
+          </span>
+        </div>
+      </div>
+
+      {/* =====================================================
+          CONTENT
+      ====================================================== */}
+
+      <div
+        className="
+    max-h-[45vh]
+    overflow-y-auto
+    px-3
+    py-2.5
+
+    sm:max-h-[50vh]
+    sm:px-3.5
+    sm:py-3
+  "
+        style={{
+          scrollbarWidth: "thin",
+        }}
+      >
+        {/* ===================================================
+            AVATAR STATUS
+        ==================================================== */}
+
+        <div
+          className="
+            mb-3
+            rounded-lg
+            border
+            border-white/10
+            bg-white/[0.03]
+            px-2.5
+            py-2
+          "
+        >
+          <div
+            className="
+              text-[9px]
+              uppercase
+              tracking-wider
+              text-zinc-500
+            "
+          >
+            Avatar
+          </div>
+
+          <div
+            className={`
+              mt-0.5
+              flex
+              items-center
+              gap-1.5
+              text-xs
+              font-medium
+              ${scene ? "text-green-400" : "text-yellow-400"}
+            `}
+          >
+            <span className="text-[8px]">●</span>
+
+            {scene ? "Connected" : "Loading..."}
+          </div>
+        </div>
+
+        {/* ===================================================
+            BLENDSHAPES
+        ==================================================== */}
+
+        {scene && engine ? (
+          <>
+            <div className="space-y-2.5">
+              {DEBUG_BLENDSHAPES.map((name) => {
+                const value = values[name] ?? 0;
+
+                return (
+                  <div key={name}>
+                    {/* Label */}
+
+                    <div
+                      className="
+                          mb-0.5
+                          flex
+                          items-center
+                          justify-between
+                          gap-2
+                        "
+                    >
+                      <span
+                        className="
+                            min-w-0
+                            truncate
+                            text-[10px]
+                            text-zinc-300
+                          "
+                        title={name}
+                      >
+                        {name}
+                      </span>
+
+                      <span
+                        className="
+                            shrink-0
+                            font-mono
+                            text-[9px]
+                            text-zinc-500
+                          "
+                      >
+                        {value.toFixed(2)}
+                      </span>
+                    </div>
+
+                    {/* Slider */}
+
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={value}
+                      onChange={(event) =>
+                        updateBlendshape(name, Number(event.target.value))
+                      }
+                      className="
+                          h-1
+                          w-full
+                          cursor-pointer
+                          accent-white
+                        "
+                      aria-label={name}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* =================================================
+                RESET
+            ================================================== */}
+
+            <button
+              type="button"
+              onClick={resetFace}
+              className="
+                mt-3
+                w-full
+                rounded-lg
+
+                border
+                border-white/10
+
+                bg-white/5
+
+                px-2.5
+                py-1.5
+
+                text-[10px]
+                text-zinc-300
+
+                transition
+
+                hover:bg-white/10
+                active:scale-[0.98]
+              "
+            >
+              Reset Face
+            </button>
+          </>
+        ) : (
+          <div
+            className="
+              py-5
+              text-center
+              text-[10px]
+              text-zinc-500
+            "
+          >
+            Waiting for avatar...
+          </div>
+        )}
+      </div>
     </aside>
   );
 }

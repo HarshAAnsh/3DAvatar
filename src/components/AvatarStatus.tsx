@@ -39,20 +39,16 @@ export default function AvatarStatus() {
   return (
     <aside
       className="
-        absolute
-        right-5
-        top-[18rem]
-        z-30
-        w-64
-        rounded-2xl
-        border
-        border-white/10
-        bg-black/80
-        p-4
-        text-white
-        shadow-2xl
-        backdrop-blur-xl
-      "
+    w-full
+    rounded-xl
+    border
+    border-white/10
+    bg-black/80
+    p-3
+    text-white
+    shadow-xl
+    backdrop-blur-xl
+  "
     >
       <div className="mb-4">
         <p className="text-sm font-semibold">Avatar System</p>

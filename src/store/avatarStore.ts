@@ -1,42 +1,125 @@
 import { create } from "zustand";
-import * as THREE from "three";
+import type * as THREE from "three";
 
-import { FacialAnimationEngine } from "../avatar/FacialAnimationEngine";
-import { HeadPoseController } from "../avatar/HeadPoseController";
-import { SpeechAnimation } from "../avatar/SpeechAnimation";
-import type { AvatarMode } from "../avatar/AvatarMode";
+import type { FacialAnimationEngine } from "../avatar/FacialAnimationEngine";
+import type { HeadPoseController } from "../avatar/HeadPoseController";
+import type { SpeechAnimation } from "../avatar/SpeechAnimation";
+
+export type AvatarMode = "live" | "demo";
+
+export type AvatarEmotion =
+  | "neutral"
+  | "happy"
+  | "excited"
+  | "sad"
+  | "concerned"
+  | "curious"
+  | "thinking"
+  | "apologetic";
 
 interface AvatarStore {
+  /*
+   * 3D scene
+   */
   scene: THREE.Object3D | null;
+
+  /*
+   * Facial animation engine
+   */
   engine: FacialAnimationEngine | null;
+
+  /*
+   * Head tracking controller
+   */
   headPose: HeadPoseController | null;
+
+  /*
+   * Speech / lip-sync animation
+   */
   speechAnimation: SpeechAnimation | null;
 
+  /*
+   * Application mode
+   */
   mode: AvatarMode;
 
-  setScene: (scene: THREE.Object3D) => void;
-  setEngine: (engine: FacialAnimationEngine) => void;
-  setHeadPose: (headPose: HeadPoseController) => void;
+  /*
+   * Current conversational emotion
+   */
+  emotion: AvatarEmotion;
+
+  /*
+   * Scene setters
+   */
+  setScene: (scene: THREE.Object3D | null) => void;
+
+  setEngine: (engine: FacialAnimationEngine | null) => void;
+
+  setHeadPose: (headPose: HeadPoseController | null) => void;
+
   setSpeechAnimation: (speechAnimation: SpeechAnimation | null) => void;
 
+  /*
+   * Mode
+   */
   setMode: (mode: AvatarMode) => void;
+
+  /*
+   * Emotion
+   */
+  setEmotion: (emotion: AvatarEmotion) => void;
+
+  /*
+   * Reset runtime state
+   */
+  reset: () => void;
 }
 
 export const useAvatarStore = create<AvatarStore>((set) => ({
   scene: null,
+
   engine: null,
+
   headPose: null,
+
   speechAnimation: null,
 
-  mode: "live",
+  mode: "demo",
 
-  setScene: (scene) => set({ scene }),
+  emotion: "neutral",
 
-  setEngine: (engine) => set({ engine }),
+  setScene: (scene) => {
+    set({ scene });
+  },
 
-  setHeadPose: (headPose) => set({ headPose }),
+  setEngine: (engine) => {
+    set({ engine });
+  },
 
-  setSpeechAnimation: (speechAnimation) => set({ speechAnimation }),
+  setHeadPose: (headPose) => {
+    set({ headPose });
+  },
 
-  setMode: (mode) => set({ mode }),
+  setSpeechAnimation: (speechAnimation) => {
+    set({ speechAnimation });
+  },
+
+  setMode: (mode) => {
+    set({ mode });
+  },
+
+  setEmotion: (emotion) => {
+    set({ emotion });
+  },
+
+  reset: () => {
+    set({
+      scene: null,
+      engine: null,
+      headPose: null,
+      speechAnimation: null,
+      mode: "demo",
+      emotion: "neutral",
+    });
+  },
 }));

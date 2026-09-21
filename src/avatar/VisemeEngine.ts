@@ -1,18 +1,115 @@
-import * as THREE from "three";
+import type { FacialAnimationEngine } from "./FacialAnimationEngine";
 
-import { FacialAnimationEngine } from "./FacialAnimationEngine";
-
-export type Viseme =
+export type VisemeType =
   "rest" | "A" | "E" | "I" | "O" | "U" | "M" | "F" | "L" | "S";
+
+/*
+ * Backward-compatible alias.
+ */
+export type Viseme = VisemeType;
+
+interface BlendshapeTarget {
+  [name: string]: number;
+}
+
+/*
+ * IMPORTANT:
+ * These are ARKit blendshape names.
+ *
+ * FacialAnimationEngine -> BlendshapeMapper
+ * will translate them to the actual GLB morph names:
+ *
+ * mouthSmileLeft  -> mouthSmile_L
+ * mouthSmileRight -> mouthSmile_R
+ * etc.
+ */
+const VISEME_TARGETS: Record<VisemeType, BlendshapeTarget> = {
+  rest: {
+    jawOpen: 0,
+    mouthClose: 0,
+    mouthFunnel: 0,
+    mouthPucker: 0,
+    mouthSmileLeft: 0,
+    mouthSmileRight: 0,
+    mouthStretchLeft: 0,
+    mouthStretchRight: 0,
+    mouthPressLeft: 0,
+    mouthPressRight: 0,
+  },
+
+  A: {
+    jawOpen: 0.65,
+    mouthSmileLeft: 0.15,
+    mouthSmileRight: 0.15,
+  },
+
+  E: {
+    jawOpen: 0.3,
+    mouthSmileLeft: 0.45,
+    mouthSmileRight: 0.45,
+    mouthStretchLeft: 0.25,
+    mouthStretchRight: 0.25,
+  },
+
+  I: {
+    jawOpen: 0.18,
+    mouthSmileLeft: 0.35,
+    mouthSmileRight: 0.35,
+    mouthStretchLeft: 0.3,
+    mouthStretchRight: 0.3,
+  },
+
+  O: {
+    jawOpen: 0.42,
+    mouthFunnel: 0.65,
+    mouthPucker: 0.2,
+  },
+
+  U: {
+    jawOpen: 0.2,
+    mouthPucker: 0.7,
+    mouthFunnel: 0.4,
+  },
+
+  M: {
+    jawOpen: 0,
+    mouthClose: 0.85,
+    mouthPressLeft: 0.35,
+    mouthPressRight: 0.35,
+  },
+
+  F: {
+    jawOpen: 0.12,
+    mouthPressLeft: 0.25,
+    mouthPressRight: 0.25,
+  },
+
+  L: {
+    jawOpen: 0.28,
+    mouthSmileLeft: 0.12,
+    mouthSmileRight: 0.12,
+  },
+
+  S: {
+    jawOpen: 0.08,
+    mouthSmileLeft: 0.1,
+    mouthSmileRight: 0.1,
+    mouthStretchLeft: 0.2,
+    mouthStretchRight: 0.2,
+  },
+};
 
 export class VisemeEngine {
   private engine: FacialAnimationEngine;
 
-  private targetViseme: Viseme = "rest";
+  private currentValues: BlendshapeTarget = {};
 
-  private transitionSpeed = 12;
+  private targetValues: BlendshapeTarget = {};
 
-  private currentValues: Record<string, number> = {};
+  /*
+   * Higher value = faster transition.
+   */
+  private smoothing = 14;
 
   constructor(engine: FacialAnimationEngine) {
     this.engine = engine;
@@ -20,135 +117,58 @@ export class VisemeEngine {
     console.log("[VisemeEngine] Initialized");
   }
 
-  setViseme(viseme: Viseme) {
-    if (this.targetViseme === viseme) {
-      return;
-    }
+  // ==================================================
+  // Set target viseme
+  // ==================================================
 
-    this.targetViseme = viseme;
+  setViseme(viseme: VisemeType) {
+    const target = VISEME_TARGETS[viseme] ?? VISEME_TARGETS.rest;
+
+    this.targetValues = {
+      ...target,
+    };
 
     console.log("[VisemeEngine] Viseme:", viseme);
   }
 
+  // ==================================================
+  // Update smooth transition
+  // ==================================================
+
   update(delta: number) {
-    const targetValues = this.getVisemeValues(this.targetViseme);
+    const alpha = 1 - Math.exp(-this.smoothing * delta);
 
     const names = new Set([
       ...Object.keys(this.currentValues),
-      ...Object.keys(targetValues),
+      ...Object.keys(this.targetValues),
     ]);
 
     for (const name of names) {
       const current = this.currentValues[name] ?? 0;
 
-      const target = targetValues[name] ?? 0;
+      const target = this.targetValues[name] ?? 0;
 
-      const next = THREE.MathUtils.lerp(
-        current,
-        target,
-        THREE.MathUtils.clamp(delta * this.transitionSpeed, 0, 1),
-      );
+      const next = current + (target - current) * alpha;
 
       this.currentValues[name] = next;
 
-      this.engine.setAvatarBlendshape(name, next, "tts");
+      /*
+       * Send ARKit names here.
+       * BlendshapeMapper converts them to
+       * the actual avatar morph-target names.
+       */
+      this.engine.setARKitBlendshape(name, next, "tts");
     }
   }
+
+  // ==================================================
+  // Reset
+  // ==================================================
 
   reset() {
-    this.targetViseme = "rest";
-
     this.currentValues = {};
+    this.targetValues = {};
 
-    this.engine.clearSource("tts");
-  }
-
-  private getVisemeValues(viseme: Viseme): Record<string, number> {
-    switch (viseme) {
-      case "A":
-        return {
-          jawOpen: 0.65,
-          mouthSmile_L: 0.15,
-          mouthSmile_R: 0.15,
-        };
-
-      case "E":
-        return {
-          jawOpen: 0.3,
-          mouthSmile_L: 0.45,
-          mouthSmile_R: 0.45,
-          mouthStretch_L: 0.25,
-          mouthStretch_R: 0.25,
-        };
-
-      case "I":
-        return {
-          jawOpen: 0.18,
-          mouthSmile_L: 0.35,
-          mouthSmile_R: 0.35,
-          mouthStretch_L: 0.3,
-          mouthStretch_R: 0.3,
-        };
-
-      case "O":
-        return {
-          jawOpen: 0.42,
-          mouthFunnel: 0.65,
-          mouthPucker: 0.2,
-        };
-
-      case "U":
-        return {
-          jawOpen: 0.2,
-          mouthPucker: 0.7,
-          mouthFunnel: 0.4,
-        };
-
-      case "M":
-        return {
-          jawOpen: 0,
-          mouthClose: 0.85,
-          mouthPress_L: 0.35,
-          mouthPress_R: 0.35,
-        };
-
-      case "F":
-        return {
-          jawOpen: 0.12,
-          mouthPress_L: 0.25,
-          mouthPress_R: 0.25,
-        };
-
-      case "L":
-        return {
-          jawOpen: 0.28,
-          mouthSmile_L: 0.12,
-          mouthSmile_R: 0.12,
-        };
-
-      case "S":
-        return {
-          jawOpen: 0.08,
-          mouthSmile_L: 0.1,
-          mouthSmile_R: 0.1,
-          mouthStretch_L: 0.2,
-          mouthStretch_R: 0.2,
-        };
-
-      case "rest":
-      default:
-        return {
-          jawOpen: 0,
-          mouthClose: 0,
-          mouthFunnel: 0,
-          mouthPucker: 0,
-          mouthSmile_L: 0,
-          mouthSmile_R: 0,
-          mouthStretch_L: 0,
-          mouthStretch_R: 0,
-          mouthPress_L: 0,
-          mouthPress_R: 0,
-        };
-    }
+    this.setViseme("rest");
   }
 }

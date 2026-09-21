@@ -10,7 +10,7 @@ interface AIResponse {
 
 export async function getAIResponse(
   message: string,
-  history: ChatMessage[] = []
+  history: ChatMessage[] = [],
 ): Promise<string> {
   const response = await fetch("/api/chat", {
     method: "POST",
@@ -25,19 +25,14 @@ export async function getAIResponse(
     }),
   });
 
-  const data =
-    (await response.json()) as AIResponse;
+  const data = (await response.json()) as AIResponse;
 
   if (!response.ok) {
-    throw new Error(
-      data.error || "AI request failed"
-    );
+    throw new Error(data.error || "AI request failed");
   }
 
   if (!data.text) {
-    throw new Error(
-      "AI returned an empty response"
-    );
+    throw new Error("AI returned an empty response");
   }
 
   return data.text;

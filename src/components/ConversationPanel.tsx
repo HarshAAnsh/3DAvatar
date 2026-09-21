@@ -1,825 +1,724 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAvatarStore } from "../store/avatarStore";
+
 import { useConversationStore } from "../store/conversationStore";
 
-import {
-  SpeechRecognitionController,
-} from "../avatar/SpeechRecognitionController";
+import { SpeechRecognitionController } from "../avatar/SpeechRecognitionController";
 
-import {
-  TTSController,
-} from "../avatar/TTSController";
+import { TTSController } from "../avatar/TTSController";
 
-import {
-  getDemoResponse,
-} from "../avatar/DemoResponses";
+import { getDemoResponse } from "../avatar/DemoResponses";
 
-import {
-  getAIResponse,
-  type ChatMessage,
-} from "../services/aiService";
+import { inferEmotionFromText } from "../avatar/EmotionEngine";
 
-export default function ConversationPanel() {
-  // ==================================================
-  // Avatar state
-  // ==================================================
+import { getAIResponse, type ChatMessage } from "../services/aiService";
 
-  const mode = useAvatarStore(
-    (state) => state.mode
-  );
+function ConversationPanel() {
+  // ============================================================
+  // AVATAR STATE
+  // ============================================================
 
-  const speechAnimation = useAvatarStore(
-    (state) => state.speechAnimation
-  );
+  const mode = useAvatarStore((state) => state.mode);
 
-  // ==================================================
-  // Conversation store
-  // ==================================================
+  const speechAnimation = useAvatarStore((state) => state.speechAnimation);
 
-  const state = useConversationStore(
-    (state) => state.state
-  );
+  const setEmotion = useAvatarStore((state) => state.setEmotion);
 
-  const transcript = useConversationStore(
-    (state) => state.transcript
-  );
+  // ============================================================
+  // CONVERSATION STATE
+  // ============================================================
 
-  const response = useConversationStore(
-    (state) => state.response
-  );
+  const conversationState = useConversationStore((state) => state.state);
 
-  const setState = useConversationStore(
-    (state) => state.setState
-  );
+  const setConversationState = useConversationStore((state) => state.setState);
 
-  const setTranscript = useConversationStore(
-    (state) => state.setTranscript
-  );
+  // ============================================================
+  // LOCAL UI STATE
+  // ============================================================
 
-  const setResponse = useConversationStore(
-    (state) => state.setResponse
-  );
+  const [message, setMessage] = useState("");
 
-  // ==================================================
-  // Local UI state
-  // ==================================================
+  const [isOpen, setIsOpen] = useState(true);
 
-  const [text, setText] = useState("");
+  const [isListening, setIsListening] = useState(false);
 
-  const [voiceSupported, setVoiceSupported] =
-    useState(true);
+  // ============================================================
+  // REFS
+  // ============================================================
 
-  const [showConversation, setShowConversation] =
-    useState(false);
+  const ttsRef = useRef<TTSController | null>(null);
 
-  // ==================================================
-  // Controller refs
-  // ==================================================
+  const recognitionRef = useRef<SpeechRecognitionController | null>(null);
 
-  const ttsRef =
-    useRef<TTSController | null>(null);
+  const responseRef = useRef("");
 
-  const recognitionRef =
-    useRef<SpeechRecognitionController | null>(
-      null
-    );
+  const mountedRef = useRef(true);
 
-  // ==================================================
-  // Latest response ref
-  // ==================================================
+  const processingRef = useRef(false);
 
-  const responseRef =
-    useRef(response);
+  const historyRef = useRef<ChatMessage[]>([]);
+
+  // ============================================================
+  // COMPONENT CLEANUP
+  // ============================================================
 
   useEffect(() => {
-    responseRef.current = response;
-  }, [response]);
+    mountedRef.current = true;
 
-  // ==================================================
-  // Latest mode ref
-  //
-  // Prevents speech recognition from using
-  // an old "demo/live" value.
-  // ==================================================
+    return () => {
+      mountedRef.current = false;
 
-  const modeRef =
-    useRef(mode);
+      try {
+        ttsRef.current?.stop();
+      } catch {
+        // Ignore cleanup errors.
+      }
 
-  useEffect(() => {
-    modeRef.current = mode;
-  }, [mode]);
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        // Ignore cleanup errors.
+      }
 
-  // ==================================================
-  // Latest speech animation ref
-  // ==================================================
-
-  const speechAnimationRef =
-    useRef(speechAnimation);
-
-  useEffect(() => {
-    speechAnimationRef.current =
-      speechAnimation;
+      try {
+        speechAnimation?.stop();
+      } catch {
+        // Ignore cleanup errors.
+      }
+    };
   }, [speechAnimation]);
 
-  // ==================================================
-  // Conversation history
-  // ==================================================
-
-  const historyRef =
-    useRef<ChatMessage[]>([]);
-
-  // ==================================================
-  // Add a conversation turn
-  //
-  // The explicit ChatMessage[] type + "as const"
-  // prevents role from becoming generic string.
-  // ==================================================
+  // ============================================================
+  // CHAT HISTORY
+  // ============================================================
 
   const addToHistory = useCallback(
-    (
-      userMessage: string,
-      assistantMessage: string
-    ) => {
-      const updatedHistory: ChatMessage[] = [
+    (userText: string, assistantText: string) => {
+      historyRef.current = [
         ...historyRef.current,
 
         {
           role: "user" as const,
-          text: userMessage,
+          text: userText,
         },
 
         {
           role: "assistant" as const,
-          text: assistantMessage,
+          text: assistantText,
         },
-      ].slice(-10);
+      ];
 
-      historyRef.current =
-        updatedHistory;
+      // Keep the conversation small.
+      if (historyRef.current.length > 20) {
+        historyRef.current = historyRef.current.slice(-20);
+      }
     },
-    []
+    [],
   );
 
-  // ==================================================
-  // Central message handler
-  //
-  // Both text and voice input use this function.
-  // ==================================================
+  // ============================================================
+  // EMOTION
+  // ============================================================
 
-  const handleUserMessage =
-    useCallback(
-      async (userMessage: string) => {
-        const trimmed =
-          userMessage.trim();
+  const applyEmotion = useCallback(
+    (text: string) => {
+      const emotion = inferEmotionFromText(text);
 
-        if (!trimmed) {
-          return;
-        }
+      console.log("[Conversation] Emotion:", emotion);
 
-        // Only allow conversation in Demo mode
-        if (modeRef.current !== "demo") {
-          console.warn(
-            "[Conversation] Demo mode required"
-          );
+      setEmotion(emotion);
 
-          return;
-        }
+      return emotion;
+    },
+    [setEmotion],
+  );
 
-        console.log(
-          "[Conversation] User:",
-          trimmed
-        );
+  // ============================================================
+  // HANDLE USER MESSAGE
+  // ============================================================
 
-        setTranscript(trimmed);
+  const handleUserMessage = useCallback(
+    async (input: string) => {
+      const trimmed = input.trim();
 
-        setShowConversation(true);
+      if (!trimmed) {
+        return;
+      }
 
-        setState("thinking");
+      if (processingRef.current) {
+        console.log("[Conversation] Already processing");
+
+        return;
+      }
+
+      processingRef.current = true;
+
+      console.log("[Conversation] User:", trimmed);
+
+      setMessage("");
+
+      // ------------------------------------------------------
+      // Stop current speech before new request
+      // ------------------------------------------------------
+
+      try {
+        ttsRef.current?.stop();
+      } catch {
+        // Ignore.
+      }
+
+      try {
+        speechAnimation?.stop();
+      } catch {
+        // Ignore.
+      }
+
+      try {
+        // ----------------------------------------------------
+        // THINKING
+        // ----------------------------------------------------
+
+        setConversationState("thinking");
+
+        // ----------------------------------------------------
+        // AI RESPONSE
+        // ----------------------------------------------------
+
+        let response = "";
 
         try {
-          // ==========================================
-          // Ask Gemini
-          // ==========================================
+          console.log("[Conversation] Asking AI...");
 
-          console.log(
-            "[Conversation] Asking AI..."
-          );
+          response = await getAIResponse(trimmed, historyRef.current);
 
-          const aiResponse =
-            await getAIResponse(
-              trimmed,
-              historyRef.current
-            );
-
-          console.log(
-            "[Conversation] AI:",
-            aiResponse
-          );
-
-          // ==========================================
-          // Store response
-          // ==========================================
-
-          setResponse(aiResponse);
-
-          responseRef.current =
-            aiResponse;
-
-          // ==========================================
-          // Update history
-          // ==========================================
-
-          addToHistory(
-            trimmed,
-            aiResponse
-          );
-
-          // ==========================================
-          // Speak response
-          // ==========================================
-
-          ttsRef.current?.speak(
-            aiResponse
-          );
+          console.log("[Conversation] AI:", response);
         } catch (error) {
-          // ==========================================
-          // Gemini failed
-          //
-          // Use local DemoResponses fallback
-          // ==========================================
+          console.error("[Conversation] AI failed:", error);
 
-          console.error(
-            "[Conversation] AI failed:",
-            error
-          );
+          response = getDemoResponse(trimmed);
 
-          const fallbackResponse =
-            getDemoResponse(trimmed);
-
-          console.log(
-            "[Conversation] Fallback:",
-            fallbackResponse
-          );
-
-          // ==========================================
-          // Store fallback response
-          // ==========================================
-
-          setResponse(
-            fallbackResponse
-          );
-
-          responseRef.current =
-            fallbackResponse;
-
-          // ==========================================
-          // Store fallback history
-          // ==========================================
-
-          addToHistory(
-            trimmed,
-            fallbackResponse
-          );
-
-          // ==========================================
-          // Speak fallback
-          // ==========================================
-
-          ttsRef.current?.speak(
-            fallbackResponse
-          );
+          console.log("[Conversation] Fallback:", response);
         }
-      },
-      [
-        addToHistory,
-        setResponse,
-        setState,
-        setTranscript,
-      ]
-    );
 
-  // ==================================================
-  // Initialize TTS and Speech Recognition
-  // ==================================================
+        // ----------------------------------------------------
+        // EMPTY RESPONSE FALLBACK
+        // ----------------------------------------------------
+
+        if (!response.trim()) {
+          response = getDemoResponse(trimmed);
+
+          console.log("[Conversation] Empty response fallback:", response);
+        }
+
+        // ----------------------------------------------------
+        // EMOTION DETECTION
+        // ----------------------------------------------------
+
+        applyEmotion(response);
+
+        // ----------------------------------------------------
+        // HISTORY
+        // ----------------------------------------------------
+
+        addToHistory(trimmed, response);
+
+        responseRef.current = response;
+
+        // ----------------------------------------------------
+        // SPEAK
+        // ----------------------------------------------------
+
+        setConversationState("speaking");
+
+        ttsRef.current?.speak(response);
+      } catch (error) {
+        console.error("[Conversation] Unexpected error:", error);
+
+        speechAnimation?.stop();
+
+        setEmotion("neutral");
+
+        setConversationState("idle");
+      } finally {
+        processingRef.current = false;
+      }
+    },
+    [
+      addToHistory,
+      applyEmotion,
+      setConversationState,
+      setEmotion,
+      speechAnimation,
+    ],
+  );
+
+  // ============================================================
+  // TTS CONTROLLER
+  // ============================================================
 
   useEffect(() => {
-    // =================================================
-    // TTS
-    // =================================================
+    const tts = new TTSController({
+      // ------------------------------------------------------
+      // TTS START
+      // ------------------------------------------------------
 
-    const tts =
-      new TTSController({
-        onStart: () => {
-          console.log(
-            "[Conversation] TTS started"
-          );
+      onStart: () => {
+        console.log("[Conversation] TTS started");
 
-          setState("speaking");
+        setConversationState("speaking");
 
-          speechAnimationRef.current?.start(
-            responseRef.current
-          );
-        },
+        // IMPORTANT:
+        // Start the facial speech animation
+        // using the same response that TTS is speaking.
 
-        onEnd: () => {
-          console.log(
-            "[Conversation] TTS ended"
-          );
+        speechAnimation?.start(responseRef.current);
+      },
 
-          speechAnimationRef.current?.stop();
+      // ------------------------------------------------------
+      // SPEECH BOUNDARY
+      // ------------------------------------------------------
 
-          setState("idle");
-        },
+      onBoundary: (charIndex, charLength, elapsedTime, name) => {
+        console.log("[Conversation] TTS boundary:", {
+          charIndex,
+          charLength,
+          elapsedTime,
+          name,
+        });
 
-        onError: (error) => {
-          console.error(
-            "[Conversation] TTS error:",
-            error
-          );
+        // Forward browser timing information
+        // to SpeechAnimation.
 
-          speechAnimationRef.current?.stop();
+        speechAnimation?.handleBoundary(charIndex, charLength, elapsedTime);
+      },
 
-          setState("idle");
-        },
-      });
+      // ------------------------------------------------------
+      // TTS END
+      // ------------------------------------------------------
+
+      onEnd: () => {
+        console.log("[Conversation] TTS ended");
+
+        if (!mountedRef.current) {
+          return;
+        }
+
+        // Always stop speech animation.
+        speechAnimation?.stop();
+
+        // Return expression to neutral.
+        setEmotion("neutral");
+
+        setConversationState("idle");
+      },
+
+      // ------------------------------------------------------
+      // TTS ERROR
+      // ------------------------------------------------------
+
+      onError: (error) => {
+        console.error("[Conversation] TTS error:", error);
+
+        if (!mountedRef.current) {
+          return;
+        }
+
+        speechAnimation?.stop();
+
+        setEmotion("neutral");
+
+        setConversationState("idle");
+      },
+    });
 
     ttsRef.current = tts;
 
-    // =================================================
-    // Speech Recognition
-    // =================================================
+    return () => {
+      tts.stop();
 
-    const recognition =
-      new SpeechRecognitionController({
-        onStart: () => {
-          console.log(
-            "[Conversation] Listening"
-          );
+      if (ttsRef.current === tts) {
+        ttsRef.current = null;
+      }
+    };
+  }, [setConversationState, setEmotion, speechAnimation]);
 
-          setShowConversation(true);
+  // ============================================================
+  // SPEECH RECOGNITION
+  // ============================================================
 
-          setState("listening");
-        },
+  useEffect(() => {
+    const recognition = new SpeechRecognitionController({
+      onStart: () => {
+        console.log("[Conversation] Recognition started");
 
-        onResult: (recognizedText) => {
-          console.log(
-            "[Conversation] Voice input:",
-            recognizedText
-          );
+        setIsListening(true);
 
-          void handleUserMessage(
-            recognizedText
-          );
-        },
+        setConversationState("listening");
+      },
 
-        onEnd: () => {
-          console.log(
-            "[Conversation] Recognition ended"
-          );
-        },
+      onResult: (transcript: string) => {
+        console.log("[Conversation] Recognition result:", transcript);
 
-        onError: (error) => {
-          console.error(
-            "[Conversation] Recognition error:",
-            error
-          );
+        setIsListening(false);
 
-          setState("idle");
-        },
-      });
+        void handleUserMessage(transcript);
+      },
 
-    recognitionRef.current =
-      recognition;
+      onEnd: () => {
+        console.log("[Conversation] Recognition ended");
 
-    setVoiceSupported(
-      recognition.isSupported()
-    );
+        if (mountedRef.current) {
+          setIsListening(false);
+        }
+      },
 
-    // =================================================
-    // Cleanup
-    // =================================================
+      onError: (error) => {
+        console.error("[Conversation] Recognition error:", error);
+
+        if (mountedRef.current) {
+          setIsListening(false);
+
+          setConversationState("idle");
+        }
+      },
+    });
+
+    recognitionRef.current = recognition;
 
     return () => {
       recognition.stop();
 
-      tts.stop();
-
-      speechAnimationRef.current?.stop();
-
-      recognitionRef.current =
-        null;
-
-      ttsRef.current =
-        null;
+      if (recognitionRef.current === recognition) {
+        recognitionRef.current = null;
+      }
     };
-  }, [
-    handleUserMessage,
-    setState,
-  ]);
+  }, [handleUserMessage, setConversationState]);
 
-  // ==================================================
-  // Text submission
-  // ==================================================
+  // ============================================================
+  // START LISTENING
+  // ============================================================
 
-  const submitText = () => {
-    const trimmed =
-      text.trim();
+  const startListening = useCallback(() => {
+    if (recognitionRef.current) {
+      console.log("[Conversation] Starting recognition");
 
-    if (!trimmed) {
-      return;
+      recognitionRef.current.start();
     }
+  }, []);
 
-    if (modeRef.current !== "demo") {
-      return;
-    }
+  // ============================================================
+  // STOP CONVERSATION
+  // ============================================================
 
-    setText("");
+  const stopConversation = useCallback(() => {
+    console.log("[Conversation] Stopping conversation");
 
-    void handleUserMessage(
-      trimmed
-    );
-  };
-
-  // ==================================================
-  // Start voice recognition
-  // ==================================================
-
-  const startListening = () => {
-    if (modeRef.current !== "demo") {
-      return;
-    }
-
-    if (!voiceSupported) {
-      console.warn(
-        "[Conversation] Voice recognition not supported"
-      );
-
-      return;
-    }
-
-    if (
-      state === "listening" ||
-      state === "thinking" ||
-      state === "speaking"
-    ) {
-      return;
-    }
-
-    console.log(
-      "[Conversation] Starting voice recognition"
-    );
+    processingRef.current = false;
 
     try {
-      recognitionRef.current?.start();
-    } catch (error) {
-      console.error(
-        "[Conversation] Could not start recognition:",
-        error
-      );
+      recognitionRef.current?.stop();
+    } catch {
+      // Ignore.
+    }
 
-      setState("idle");
+    try {
+      ttsRef.current?.stop();
+    } catch {
+      // Ignore.
+    }
+
+    try {
+      speechAnimation?.stop();
+    } catch {
+      // Ignore.
+    }
+
+    setIsListening(false);
+
+    setEmotion("neutral");
+
+    setConversationState("idle");
+  }, [setConversationState, setEmotion, speechAnimation]);
+
+  // ============================================================
+  // FORM SUBMIT
+  // ============================================================
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    void handleUserMessage(message);
+  };
+
+  // ============================================================
+  // KEYBOARD
+  // ============================================================
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+
+      void handleUserMessage(message);
     }
   };
 
-  // ==================================================
-  // Stop conversation
-  // ==================================================
+  // ============================================================
+  // STATUS
+  // ============================================================
 
-  const stopConversation = () => {
-    console.log(
-      "[Conversation] Stopping"
-    );
+  const statusLabel =
+    conversationState === "listening"
+      ? "Listening..."
+      : conversationState === "thinking"
+        ? "Thinking..."
+        : conversationState === "speaking"
+          ? "Speaking..."
+          : "Ready";
 
-    recognitionRef.current?.stop();
-
-    ttsRef.current?.stop();
-
-    speechAnimationRef.current?.stop();
-
-    setState("idle");
-  };
-
-  // ==================================================
-  // UI state
-  // ==================================================
-
-  const demoMode =
-    mode === "demo";
-
-  const isListening =
-    state === "listening";
-
-  const isThinking =
-    state === "thinking";
-
-  const isSpeaking =
-    state === "speaking";
-
-  // ==================================================
-  // UI
-  // ==================================================
+  // ============================================================
+  // RENDER
+  // ============================================================
 
   return (
-    <aside
+    <section
       className="
-        absolute
-        bottom-4
-        left-1/2
-        z-30
-        w-[calc(100%-2rem)]
-        max-w-lg
-        -translate-x-1/2
-      "
+    mx-auto
+    w-full
+    max-w-3xl
+  "
     >
-      {/* =================================================
-          Conversation preview
-          ================================================= */}
-
-      {showConversation &&
-        (transcript || response) && (
-          <div
-            className="
-              mb-2
-              rounded-xl
-              border
-              border-white/10
-              bg-black/75
-              px-3
-              py-2
-              shadow-xl
-              backdrop-blur-xl
-            "
-          >
-            {/* User */}
-
-            {transcript && (
-              <div className="flex gap-2">
-                <span
-                  className="
-                    text-[10px]
-                    font-medium
-                    uppercase
-                    text-zinc-600
-                  "
-                >
-                  You
-                </span>
-
-                <p
-                  className="
-                    min-w-0
-                    flex-1
-                    truncate
-                    text-xs
-                    text-zinc-300
-                  "
-                >
-                  {transcript}
-                </p>
-              </div>
-            )}
-
-            {/* AI */}
-
-            {response && (
-              <div className="mt-1 flex gap-2">
-                <span
-                  className="
-                    text-[10px]
-                    font-medium
-                    uppercase
-                    text-zinc-600
-                  "
-                >
-                  AI
-                </span>
-
-                <p
-                  className="
-                    min-w-0
-                    flex-1
-                    truncate
-                    text-xs
-                    text-zinc-300
-                  "
-                >
-                  {response}
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-      {/* =================================================
-          Main control
-          ================================================= */}
-
       <div
         className="
-          rounded-xl
+          overflow-hidden
+          rounded-2xl
           border
-          border-white/10
-          bg-black/85
-          p-2
+          border-zinc-700/80
+          bg-zinc-950/85
           shadow-2xl
           backdrop-blur-xl
         "
       >
-        <div className="flex items-center gap-2">
-          {/* Chat toggle */}
-
-          <button
-            type="button"
-            onClick={() =>
-              setShowConversation(
-                (value) => !value
-              )
-            }
-            className="
-              hidden
-              rounded-lg
-              border
-              border-white/10
-              bg-zinc-900
-              px-3
-              py-2
-              text-xs
-              text-zinc-400
-              hover:bg-zinc-800
-              sm:block
-            "
-          >
-            {showConversation
-              ? "Hide"
-              : "Chat"}
-          </button>
-
-          {/* Text input */}
-
-          <input
-            value={text}
-            onChange={(event) =>
-              setText(
-                event.target.value
-              )
-            }
-            onKeyDown={(event) => {
-              if (
-                event.key === "Enter"
-              ) {
-                event.preventDefault();
-
-                submitText();
-              }
-            }}
-            disabled={!demoMode}
-            placeholder={
-              demoMode
-                ? "Ask the avatar..."
-                : "Switch to Demo mode"
-            }
-            className="
-              min-w-0
-              flex-1
-              rounded-lg
-              border
-              border-white/10
-              bg-zinc-900
-              px-3
-              py-2
-              text-xs
-              text-white
-              outline-none
-              placeholder:text-zinc-600
-              focus:border-white/20
-              disabled:opacity-40
-            "
-          />
-
-          {/* Voice */}
-
-          <button
-            type="button"
-            onClick={
-              startListening
-            }
-            disabled={
-              !demoMode ||
-              !voiceSupported ||
-              isListening ||
-              isThinking ||
-              isSpeaking
-            }
-            className="
-              rounded-lg
-              border
-              border-white/10
-              bg-zinc-900
-              px-3
-              py-2
-              text-xs
-              text-zinc-200
-              hover:bg-zinc-800
-              disabled:opacity-30
-            "
-            title={
-              voiceSupported
-                ? "Voice input"
-                : "Voice recognition is not supported"
-            }
-          >
-            {isListening
-              ? "●"
-              : "🎤"}
-          </button>
-
-          {/* Send */}
-
-          <button
-            type="button"
-            onClick={
-              submitText
-            }
-            disabled={
-              !demoMode ||
-              !text.trim() ||
-              isThinking ||
-              isSpeaking
-            }
-            className="
-              rounded-lg
-              bg-white
-              px-3
-              py-2
-              text-xs
-              font-semibold
-              text-black
-              hover:bg-zinc-200
-              disabled:opacity-30
-            "
-          >
-            Send
-          </button>
-
-          {/* Stop */}
-
-          <button
-            type="button"
-            onClick={
-              stopConversation
-            }
-            className="
-              rounded-lg
-              border
-              border-white/10
-              bg-zinc-900
-              px-3
-              py-2
-              text-xs
-              text-zinc-400
-              hover:bg-zinc-800
-            "
-          >
-            Stop
-          </button>
-        </div>
-
-        {/* =================================================
-            Status
-            ================================================= */}
+        {/* ======================================================
+            HEADER
+        ======================================================= */}
 
         <div
           className="
-            mt-1
             flex
             items-center
-            justify-center
+            justify-between
+            border-b
+            border-zinc-800
+            px-3
+            py-2
           "
         >
-          <span
+          <div
             className="
-              text-[10px]
-              text-zinc-600
+              flex
+              items-center
+              gap-2
             "
           >
-            {isListening
-              ? "Listening..."
-              : isThinking
-                ? "Thinking..."
-                : isSpeaking
-                  ? "Speaking..."
-                  : !voiceSupported
-                    ? "Text interaction • Voice unavailable"
-                    : "Voice + text interaction"}
-          </span>
+            <div
+              className={`
+                h-2
+                w-2
+                rounded-full
+                ${
+                  conversationState === "speaking"
+                    ? "bg-green-400"
+                    : conversationState === "thinking"
+                      ? "bg-yellow-400"
+                      : conversationState === "listening"
+                        ? "bg-blue-400"
+                        : "bg-zinc-500"
+                }
+              `}
+            />
+
+            <span
+              className="
+                text-xs
+                font-medium
+                text-zinc-300
+              "
+            >
+              {statusLabel}
+            </span>
+
+            <span
+              className="
+                hidden
+                text-[10px]
+                text-zinc-600
+                sm:inline
+              "
+            >
+              • {mode === "live" ? "Live mode" : "Demo mode"}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsOpen((value) => !value)}
+            className="
+              rounded-lg
+              px-2
+              py-1
+              text-xs
+              text-zinc-400
+              transition
+              hover:bg-zinc-800
+              hover:text-white
+            "
+          >
+            {isOpen ? "Hide" : "Chat"}
+          </button>
         </div>
+
+        {/* ======================================================
+            BODY
+        ======================================================= */}
+
+        {isOpen && (
+          <div className="p-3">
+            <form
+              onSubmit={handleSubmit}
+              className="
+                flex
+                items-center
+                gap-2
+              "
+            >
+              {/* Input */}
+
+              <input
+                type="text"
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Talk to the avatar..."
+                disabled={conversationState === "thinking"}
+                className="
+                  min-w-0
+                  flex-1
+                  rounded-xl
+                  border
+                  border-zinc-700
+                  bg-zinc-900
+                  px-3
+                  py-2.5
+                  text-sm
+                  text-white
+                  outline-none
+                  placeholder:text-zinc-600
+                  focus:border-zinc-500
+                  disabled:cursor-not-allowed
+                  disabled:opacity-50
+                "
+              />
+
+              {/* Voice */}
+
+              <button
+                type="button"
+                onClick={startListening}
+                disabled={isListening || conversationState === "thinking"}
+                aria-label="Start voice input"
+                className={`
+                  flex
+                  h-10
+                  w-10
+                  shrink-0
+                  items-center
+                  justify-center
+                  rounded-xl
+                  border
+                  transition
+                  ${
+                    isListening
+                      ? "border-blue-500 bg-blue-500/20 text-blue-400"
+                      : "border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-500 hover:text-white"
+                  }
+                  disabled:cursor-not-allowed
+                  disabled:opacity-50
+                `}
+              >
+                🎙
+              </button>
+
+              {/* Send */}
+
+              <button
+                type="submit"
+                disabled={!message.trim() || conversationState === "thinking"}
+                className="
+                  h-10
+                  shrink-0
+                  rounded-xl
+                  bg-white
+                  px-4
+                  text-sm
+                  font-medium
+                  text-black
+                  transition
+                  hover:bg-zinc-200
+                  disabled:cursor-not-allowed
+                  disabled:opacity-40
+                "
+              >
+                Send
+              </button>
+
+              {/* Stop */}
+
+              {conversationState === "speaking" && (
+                <button
+                  type="button"
+                  onClick={stopConversation}
+                  className="
+                    h-10
+                    shrink-0
+                    rounded-xl
+                    border
+                    border-red-500/40
+                    bg-red-500/10
+                    px-3
+                    text-xs
+                    font-medium
+                    text-red-400
+                    transition
+                    hover:bg-red-500/20
+                  "
+                >
+                  Stop
+                </button>
+              )}
+            </form>
+
+            {/* Hint */}
+
+            <div
+              className="
+                mt-2
+                flex
+                items-center
+                justify-between
+                text-[10px]
+                text-zinc-600
+              "
+            >
+              <span>Text or voice • Gemini + local fallback</span>
+
+              <span>{isListening ? "Listening" : "Ready"}</span>
+            </div>
+          </div>
+        )}
       </div>
-    </aside>
+    </section>
   );
 }
+
+export default ConversationPanel;

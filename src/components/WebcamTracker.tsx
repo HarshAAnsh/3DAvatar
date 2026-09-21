@@ -334,21 +334,18 @@ export default function WebcamTracker() {
   return (
     <div
       className="
-        absolute
-        bottom-6
-        left-5
-        z-30
-        w-64
-        overflow-hidden
-        rounded-xl
-        border
-        border-white/10
-        bg-black/80
-        shadow-2xl
-        backdrop-blur-xl
-      "
+    w-full
+    max-w-sm
+    overflow-hidden
+    rounded-xl
+    border
+    border-white/10
+    bg-black/80
+    shadow-2xl
+    backdrop-blur-xl
+  "
     >
-      <div className="relative aspect-video">
+      <div className="relative aspect-video w-full">
         <video
           ref={videoRef}
           muted

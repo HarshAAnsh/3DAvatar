@@ -9,23 +9,22 @@ import { KTX2Loader } from "three/examples/jsm/loaders/KTX2Loader.js";
 import { useAvatarStore } from "../store/avatarStore";
 
 import { FacialAnimationEngine } from "./FacialAnimationEngine";
-
+import { EmotionEngine } from "./EmotionEngine";
 import { ProceduralBehavior } from "./ProceduralBehavior";
-
 import { HeadMotion } from "./HeadMotion";
-
 import { HeadPoseController } from "./HeadPoseController";
-
 import { SpeechAnimation } from "./SpeechAnimation";
 
 export default function Avatar() {
   const { gl } = useThree();
 
-  // --------------------------------------------------
-  // Zustand
-  // --------------------------------------------------
+  // ============================================================
+  // ZUSTAND
+  // ============================================================
 
   const scene = useAvatarStore((state) => state.scene);
+
+  const emotion = useAvatarStore((state) => state.emotion);
 
   const setScene = useAvatarStore((state) => state.setScene);
 
@@ -37,11 +36,13 @@ export default function Avatar() {
     (state) => state.setSpeechAnimation,
   );
 
-  // --------------------------------------------------
-  // Animation references
-  // --------------------------------------------------
+  // ============================================================
+  // REFS
+  // ============================================================
 
   const engineRef = useRef<FacialAnimationEngine | null>(null);
+
+  const emotionEngineRef = useRef<EmotionEngine | null>(null);
 
   const behaviorRef = useRef<ProceduralBehavior | null>(null);
 
@@ -51,9 +52,9 @@ export default function Avatar() {
 
   const speechAnimationRef = useRef<SpeechAnimation | null>(null);
 
-  // --------------------------------------------------
-  // Load GLB
-  // --------------------------------------------------
+  // ============================================================
+  // LOAD GLB
+  // ============================================================
 
   const { scene: loadedScene } = useGLTF(
     "/avatars/facecap.glb",
@@ -68,9 +69,14 @@ export default function Avatar() {
     },
   );
 
-  // --------------------------------------------------
-  // Initialize avatar systems
-  // --------------------------------------------------
+  // ============================================================
+  // INITIALIZE AVATAR
+  //
+  // IMPORTANT:
+  // Do NOT put `emotion` in this dependency array.
+  // Otherwise changing emotion destroys and recreates
+  // SpeechAnimation, which interrupts TTS.
+  // ============================================================
 
   useEffect(() => {
     if (!loadedScene) {
@@ -79,40 +85,47 @@ export default function Avatar() {
 
     console.log("[Avatar] GLB loaded");
 
-    // -----------------------------------------------
-    // Register scene
-    // -----------------------------------------------
+    // ----------------------------------------------------------
+    // Scene
+    // ----------------------------------------------------------
 
     setScene(loadedScene);
 
-    // -----------------------------------------------
-    // Facial animation engine
-    // -----------------------------------------------
+    // ----------------------------------------------------------
+    // Facial engine
+    // ----------------------------------------------------------
 
     const engine = new FacialAnimationEngine(loadedScene);
 
-    // -----------------------------------------------
+    // ----------------------------------------------------------
+    // Emotion engine
+    // ----------------------------------------------------------
+
+    const emotionEngine = new EmotionEngine(engine);
+
+    emotionEngineRef.current = emotionEngine;
+
+    console.log("[Avatar] Emotion engine initialized");
+
+    // ----------------------------------------------------------
     // Speech animation
-    // -----------------------------------------------
+    // ----------------------------------------------------------
 
     const speechAnimation = new SpeechAnimation(engine);
 
     speechAnimationRef.current = speechAnimation;
 
-    // Register speech animation
-    // inside Zustand
-
     setSpeechAnimation(speechAnimation);
 
-    // -----------------------------------------------
+    // ----------------------------------------------------------
     // Procedural facial behavior
-    // -----------------------------------------------
+    // ----------------------------------------------------------
 
     const behavior = new ProceduralBehavior(engine);
 
-    // -----------------------------------------------
-    // Find head transform
-    // -----------------------------------------------
+    // ----------------------------------------------------------
+    // Head transform
+    // ----------------------------------------------------------
 
     const headGroup = loadedScene.getObjectByName("grp_transform");
 
@@ -122,21 +135,21 @@ export default function Avatar() {
       console.log("[Avatar] Head transform found:", headGroup.name);
     }
 
-    // -----------------------------------------------
-    // Head pose controller
-    // -----------------------------------------------
+    // ----------------------------------------------------------
+    // Head pose
+    // ----------------------------------------------------------
 
     const headPose = headGroup ? new HeadPoseController(headGroup) : null;
 
-    // -----------------------------------------------
-    // Procedural head motion
-    // -----------------------------------------------
+    // ----------------------------------------------------------
+    // Head motion fallback
+    // ----------------------------------------------------------
 
     const headMotion = headGroup ? new HeadMotion(headGroup) : null;
 
-    // -----------------------------------------------
-    // Store references
-    // -----------------------------------------------
+    // ----------------------------------------------------------
+    // Save refs
+    // ----------------------------------------------------------
 
     engineRef.current = engine;
 
@@ -146,15 +159,11 @@ export default function Avatar() {
 
     headPoseRef.current = headPose;
 
-    // -----------------------------------------------
-    // Register facial engine
-    // -----------------------------------------------
+    // ----------------------------------------------------------
+    // Register systems
+    // ----------------------------------------------------------
 
     setEngine(engine);
-
-    // -----------------------------------------------
-    // Register head pose
-    // -----------------------------------------------
 
     if (headPose) {
       setHeadPose(headPose);
@@ -166,55 +175,66 @@ export default function Avatar() {
 
     console.log("[Avatar] Procedural behavior initialized");
 
-    // -----------------------------------------------
-    // Cleanup
-    // -----------------------------------------------
+    // ----------------------------------------------------------
+    // CLEANUP
+    // ----------------------------------------------------------
 
     return () => {
       console.log("[Avatar] Cleaning up animation engine");
 
-      // Reset head pose
-
       headPoseRef.current?.reset();
-
-      // Reset procedural head motion
 
       headMotionRef.current?.reset();
 
-      // Stop speech animation
-
       speechAnimationRef.current?.stop();
 
-      // Clear Zustand references
+      emotionEngineRef.current?.reset();
 
       setSpeechAnimation(null);
 
-      // Clear local references
-
       speechAnimationRef.current = null;
 
-      behaviorRef.current = null;
+      emotionEngineRef.current = null;
 
-      engineRef.current = null;
+      behaviorRef.current = null;
 
       headMotionRef.current = null;
 
       headPoseRef.current = null;
 
-      // Reset facial engine
+      engineRef.current = null;
 
       engine.reset();
     };
   }, [loadedScene, setScene, setEngine, setHeadPose, setSpeechAnimation]);
 
-  // --------------------------------------------------
-  // Animation loop
-  // --------------------------------------------------
+  // ============================================================
+  // EMOTION SYNCHRONIZATION
+  //
+  // This runs when emotion changes.
+  // It does NOT recreate the avatar.
+  // ============================================================
+
+  useEffect(() => {
+    const emotionEngine = emotionEngineRef.current;
+
+    if (!emotionEngine) {
+      return;
+    }
+
+    emotionEngine.setEmotion(emotion);
+  }, [emotion]);
+
+  // ============================================================
+  // ANIMATION LOOP
+  // ============================================================
 
   useFrame((state, delta) => {
-    const behavior = behaviorRef.current;
-
     const engine = engineRef.current;
+
+    const emotionEngine = emotionEngineRef.current;
+
+    const behavior = behaviorRef.current;
 
     const headMotion = headMotionRef.current;
 
@@ -222,50 +242,48 @@ export default function Avatar() {
 
     const speechAnimation = speechAnimationRef.current;
 
-    // ---------------------------------------------
-    // Nothing initialized yet
-    // ---------------------------------------------
-
     if (!engine) {
       return;
     }
 
-    // ---------------------------------------------
+    // --------------------------------------------------------
+    // Emotion
+    // --------------------------------------------------------
+
+    emotionEngine?.update(delta);
+
+    // --------------------------------------------------------
     // Procedural facial behavior
-    // ---------------------------------------------
+    // --------------------------------------------------------
 
-    if (behavior) {
-      behavior.update(delta, state.clock.elapsedTime);
-    }
+    behavior?.update(delta, state.clock.elapsedTime);
 
-    // ---------------------------------------------
-    // Real MediaPipe head pose
-    // ---------------------------------------------
+    // --------------------------------------------------------
+    // Head tracking / fallback motion
+    // --------------------------------------------------------
 
     if (headPose && headPose.isTrackingActive()) {
       headPose.update(delta);
-    } else if (headMotion) {
-      headMotion.update(delta, state.clock.elapsedTime);
+    } else {
+      headMotion?.update(delta, state.clock.elapsedTime);
     }
 
-    // ---------------------------------------------
-    // Speech / mouth animation
-    // ---------------------------------------------
+    // --------------------------------------------------------
+    // Speech / lip sync
+    // --------------------------------------------------------
 
-    if (speechAnimation) {
-      speechAnimation.update(delta);
-    }
+    speechAnimation?.update(delta);
 
-    // ---------------------------------------------
-    // Apply final blendshapes
-    // ---------------------------------------------
+    // --------------------------------------------------------
+    // Final blendshape application
+    // --------------------------------------------------------
 
     engine.update();
   });
 
-  // --------------------------------------------------
-  // Render
-  // --------------------------------------------------
+  // ============================================================
+  // RENDER
+  // ============================================================
 
   if (!scene) {
     return null;

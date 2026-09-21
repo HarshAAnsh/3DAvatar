@@ -54,7 +54,12 @@ export default function TTSPanel() {
           return;
         }
 
-        speechAnimation?.handleBoundary(event.charIndex);
+        const boundaryIndex =
+          typeof event === "number"
+            ? event
+            : ((event as { charIndex?: number })?.charIndex ?? 0);
+
+        speechAnimation?.handleBoundary(boundaryIndex);
       },
 
       onEnd: () => {

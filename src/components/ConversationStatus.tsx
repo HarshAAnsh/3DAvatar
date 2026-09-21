@@ -15,22 +15,18 @@ export default function ConversationStatus() {
   return (
     <div
       className="
-        absolute
-        left-1/2
-        top-20
-        z-30
-        -translate-x-1/2
-        rounded-full
-        border
-        border-white/10
-        bg-black/75
-        px-4
-        py-2
-        text-xs
-        text-white
-        shadow-xl
-        backdrop-blur-xl
-      "
+    w-fit
+    rounded-full
+    border
+    border-white/10
+    bg-black/75
+    px-3
+    py-1.5
+    text-xs
+    text-white
+    shadow-xl
+    backdrop-blur-xl
+  "
     >
       <div className="flex items-center gap-2">
         <span

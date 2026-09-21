@@ -1,44 +1,99 @@
 import type { Viseme } from "./VisemeEngine";
 
-export function characterToViseme(character: string): Viseme {
-  const char = character.toUpperCase();
+/**
+ * Maps a single character to a viseme.
+ */
+export function mapCharacterToViseme(character: string): Viseme {
+  const char = character.toLowerCase();
 
   switch (char) {
-    case "A":
+    // ----------------------------------------------
+    // Vowels
+    // ----------------------------------------------
+
+    case "a":
       return "A";
 
-    case "E":
+    case "e":
       return "E";
 
-    case "I":
+    case "i":
+    case "y":
       return "I";
 
-    case "O":
+    case "o":
       return "O";
 
-    case "U":
+    case "u":
+    case "w":
       return "U";
 
-    case "M":
-    case "B":
-    case "P":
+    // ----------------------------------------------
+    // Bilabial
+    // ----------------------------------------------
+
+    case "m":
+    case "b":
+    case "p":
       return "M";
 
-    case "F":
-    case "V":
+    // ----------------------------------------------
+    // Labiodental
+    // ----------------------------------------------
+
+    case "f":
+    case "v":
       return "F";
 
-    case "L":
-    case "R":
+    // ----------------------------------------------
+    // Tongue / alveolar
+    // ----------------------------------------------
+
+    case "l":
+    case "r":
       return "L";
 
-    case "S":
-    case "Z":
-    case "C":
-    case "X":
+    // ----------------------------------------------
+    // Sibilant / consonant
+    // ----------------------------------------------
+
+    case "s":
+    case "z":
+    case "c":
+    case "x":
+    case "j":
+    case "q":
+    case "k":
+    case "g":
+    case "t":
+    case "d":
+    case "n":
+    case "h":
       return "S";
+
+    // ----------------------------------------------
+    // Everything else
+    // ----------------------------------------------
 
     default:
       return "rest";
   }
 }
+
+/**
+ * Maps an entire string to visemes.
+ */
+export function mapTextToVisemes(text: string): Viseme[] {
+  return Array.from(text).map(mapCharacterToViseme);
+}
+
+/**
+ * Legacy-style mapper object.
+ *
+ * Useful if existing code expects a mapper object.
+ */
+export const VisemeMapper = {
+  characterToViseme: mapCharacterToViseme,
+
+  textToVisemes: mapTextToVisemes,
+};

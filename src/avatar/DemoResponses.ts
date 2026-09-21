@@ -32,9 +32,8 @@ export const responses = {
   technologies:
     "The main technologies are React, TypeScript, Three.js, React Three Fiber, MediaPipe, browser speech synthesis, and ARKit-style blendshapes.",
 
-  api:
-  "The avatar can use an external AI conversation service for dynamic responses, with a local scripted fallback when the AI service is unavailable.",
- 
+  api: "The avatar can use an external AI conversation service for dynamic responses, with a local scripted fallback when the AI service is unavailable.",
+
   default: "I am currently running in demonstration mode.",
 };
 
@@ -132,4 +131,3 @@ export function getDemoResponse(input: string): string {
 
   return responses.default;
 }
-

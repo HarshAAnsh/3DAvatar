@@ -7,9 +7,9 @@ export default async function handler(req, res) {
 
   const apiKey = process.env.GEMINI_API_KEY;
   console.log(
-  "[Gemini] API key available:",
-  Boolean(process.env.GEMINI_API_KEY)
-);
+    "[Gemini] API key available:",
+    Boolean(process.env.GEMINI_API_KEY),
+  );
 
   if (!apiKey) {
     return res.status(500).json({
@@ -18,15 +18,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const {
-      message,
-      history = [],
-    } = req.body || {};
+    const { message, history = [] } = req.body || {};
 
-    if (
-      typeof message !== "string" ||
-      !message.trim()
-    ) {
+    if (typeof message !== "string" || !message.trim()) {
       return res.status(400).json({
         error: "Message is required",
       });
@@ -38,18 +32,14 @@ export default async function handler(req, res) {
           .filter(
             (item) =>
               item &&
-              (item.role === "user" ||
-                item.role === "assistant") &&
-              typeof item.text === "string"
+              (item.role === "user" || item.role === "assistant") &&
+              typeof item.text === "string",
           )
       : [];
 
     const contents = [
       ...recentHistory.map((item) => ({
-        role:
-          item.role === "assistant"
-            ? "model"
-            : "user",
+        role: item.role === "assistant" ? "model" : "user",
         parts: [
           {
             text: item.text.slice(0, 2000),
@@ -96,38 +86,27 @@ export default async function handler(req, res) {
             maxOutputTokens: 180,
           },
         }),
-      }
+      },
     );
 
-    const data =
-      await geminiResponse.json();
+    const data = await geminiResponse.json();
 
     if (!geminiResponse.ok) {
-      console.error(
-        "[Gemini] API error:",
-        data
-      );
+      console.error("[Gemini] API error:", data);
 
-      return res
-        .status(geminiResponse.status)
-        .json({
-          error:
-            data?.error?.message ||
-            "Gemini request failed",
-        });
+      return res.status(geminiResponse.status).json({
+        error: data?.error?.message || "Gemini request failed",
+      });
     }
 
-    const text =
-      data?.candidates?.[0]
-        ?.content?.parts
-        ?.map((part) => part.text || "")
-        .join("")
-        .trim();
+    const text = data?.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text || "")
+      .join("")
+      .trim();
 
     if (!text) {
       return res.status(502).json({
-        error:
-          "Gemini returned an empty response",
+        error: "Gemini returned an empty response",
       });
     }
 
@@ -135,10 +114,7 @@ export default async function handler(req, res) {
       text,
     });
   } catch (error) {
-    console.error(
-      "[Gemini] Server error:",
-      error
-    );
+    console.error("[Gemini] Server error:", error);
 
     return res.status(500).json({
       error: "AI service unavailable",

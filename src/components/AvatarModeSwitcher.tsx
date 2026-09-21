@@ -12,19 +12,15 @@ export default function AvatarModeSwitcher() {
   return (
     <div
       className="
-        absolute
-        left-1/2
-        top-5
-        z-30
-        -translate-x-1/2
-        rounded-xl
-        border
-        border-white/10
-        bg-black/80
-        p-1
-        shadow-xl
-        backdrop-blur-xl
-      "
+    w-fit
+    rounded-xl
+    border
+    border-white/10
+    bg-black/80
+    p-1
+    shadow-xl
+    backdrop-blur-xl
+  "
     >
       <div className="flex gap-1">
         <button

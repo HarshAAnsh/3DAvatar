@@ -46,21 +46,18 @@ export default function PerformanceMonitor() {
   return (
     <aside
       className="
-        absolute
-        bottom-20
-        right-5
-        z-30
-        rounded-full
-        border
-        border-white/10
-        bg-black/75
-        px-3
-        py-2
-        text-[10px]
-        text-zinc-400
-        shadow-xl
-        backdrop-blur-xl
-      "
+    w-full
+    rounded-xl
+    border
+    border-white/10
+    bg-black/75
+    px-3
+    py-2
+    text-[10px]
+    text-zinc-400
+    shadow-xl
+    backdrop-blur-xl
+  "
     >
       <div className="flex items-center gap-2 font-mono">
         <span>FPS {fps || "--"}</span>
