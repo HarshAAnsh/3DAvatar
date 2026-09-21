@@ -89,7 +89,6 @@ export class PeerWebRTCController {
 
   private role: PeerRole = null;
 
-  private publishCanvas = false;
 
   private pendingCandidates: RTCIceCandidateInit[] =
     [];
@@ -167,8 +166,7 @@ export class PeerWebRTCController {
     this.roomId =
       normalizedRoom;
 
-    this.publishCanvas =
-      publishCanvas;
+
 
     this.setStatus(
       "connecting",
@@ -1133,8 +1131,6 @@ export class PeerWebRTCController {
     this.role =
       null;
 
-    this.publishCanvas =
-      false;
 
     this.pendingCandidates =
       [];
