@@ -1,79 +1,65 @@
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
 
-import { useAvatarStore } from "../store/avatarStore";
+import {
+  useAvatarStore,
+} from "../store/avatarStore";
 
-import { useConversationStore } from "../store/conversationStore";
+import {
+  useConversationStore,
+} from "../store/conversationStore";
 
-import { usePeerWebRTC } from "../webrtc/usePeerWebRTC";
+import {
+  useWebRTC,
+} from "../webrtc/useWebRTC";
+
+type WebRTCRole =
+  | "host"
+  | "viewer"
+  | null;
 
 interface WebRTCPanelProps {
   canvas: HTMLCanvasElement | null;
-}
 
-function createRoomId() {
-  const chars =
-    "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
-  let value = "";
-
-  for (let index = 0; index < 6; index++) {
-    value +=
-      chars[
-        Math.floor(
-          Math.random() *
-            chars.length,
-        )
-      ];
-  }
-
-  return value;
-}
-
-function statusText(
-  status: string,
-) {
-  switch (status) {
-    case "connected":
-      return "CONNECTED";
-
-    case "connecting":
-      return "CONNECTING";
-
-    case "waiting":
-      return "WAITING";
-
-    case "disconnected":
-      return "DISCONNECTED";
-
-    case "failed":
-      return "FAILED";
-
-    case "error":
-      return "ERROR";
-
-    default:
-      return "IDLE";
-  }
+  onRoleChange?: (
+    role: WebRTCRole
+  ) => void;
 }
 
 export default function WebRTCPanel({
   canvas,
+  onRoleChange,
 }: WebRTCPanelProps) {
+  /*
+   * ============================================================
+   * LOCAL UI
+   * ============================================================
+   */
+
+  const [
+    roomInput,
+    setRoomInput,
+  ] = useState("");
+
+  /*
+   * ============================================================
+   * REMOTE VIDEO
+   * ============================================================
+   */
+
   const videoRef =
     useRef<HTMLVideoElement | null>(
-      null,
+      null
     );
 
-  const [roomInput, setRoomInput] =
-    useState("");
-
-  const [copied, setCopied] =
-    useState(false);
+  /*
+   * ============================================================
+   * WEBRTC
+   * ============================================================
+   */
 
   const {
     status,
@@ -83,35 +69,63 @@ export default function WebRTCPanel({
     remoteStream,
     lastMessage,
     error,
-    connect,
-    disconnect,
+    startHost,
+    joinRoom,
+    leaveRoom,
     sendJSON,
-  } = usePeerWebRTC(canvas);
+  } = useWebRTC(canvas);
 
-  const emotion = useAvatarStore(
-    (state) => state.emotion,
-  );
+  /*
+   * ============================================================
+   * AVATAR STATE
+   * ============================================================
+   */
 
-  const mode = useAvatarStore(
-    (state) => state.mode,
-  );
+  const emotion =
+    useAvatarStore(
+      (state) => state.emotion
+    );
+
+  const mode =
+    useAvatarStore(
+      (state) => state.mode
+    );
+
+  /*
+   * ============================================================
+   * CONVERSATION STATE
+   * ============================================================
+   */
 
   const conversationState =
     useConversationStore(
-      (state) => state.state,
+      (state) => state.state
     );
 
-  const signalingUrl =
-    useMemo(() => {
-      return (
-        import.meta.env
-          .VITE_SIGNALING_URL ||
-        "ws://localhost:8080"
-      );
-    }, []);
+  /*
+   * ============================================================
+   * REPORT ROLE TO APP
+   *
+   * App uses this to decide whether WebcamTracker
+   * should be enabled.
+   * ============================================================
+   */
+
+  useEffect(() => {
+    onRoleChange?.(
+      role
+    );
+  }, [
+    role,
+    onRoleChange,
+  ]);
 
   /*
-   * Attach remote stream.
+   * ============================================================
+   * REMOTE STREAM → VIDEO
+   *
+   * Also measures decoded/displayed WebRTC frames.
+   * ============================================================
    */
 
   useEffect(() => {
@@ -125,65 +139,154 @@ export default function WebRTCPanel({
       return;
     }
 
+    console.log(
+      "[WebRTCPanel] Attaching remote stream to video"
+    );
+
     video.srcObject =
       remoteStream;
 
-    void video.play().catch(
-      (playError) => {
-        console.warn(
-          "[WebRTC] Remote video autoplay:",
-          playError,
+    let cancelled =
+      false;
+
+    let videoFrameCallbackId:
+      | number
+      | null = null;
+
+    /*
+     * requestVideoFrameCallback is supported by
+     * modern Chromium/Firefox/Safari versions.
+     */
+    if (
+      "requestVideoFrameCallback" in
+      HTMLVideoElement.prototype
+    ) {
+      const monitorVideoFrames: VideoFrameRequestCallback =
+        (
+          _now,
+          _metadata,
+        ) => {
+          if (
+            cancelled
+          ) {
+            return;
+          }
+
+          /*
+           * Tell PerformanceMonitor that
+           * one remote video frame was rendered.
+           */
+          window.dispatchEvent(
+            new CustomEvent(
+              "avatar:webrtc-frame"
+            )
+          );
+
+          videoFrameCallbackId =
+            video.requestVideoFrameCallback(
+              monitorVideoFrames
+            );
+        };
+
+      videoFrameCallbackId =
+        video.requestVideoFrameCallback(
+          monitorVideoFrames
         );
-      },
-    );
+    }
+
+    /*
+     * Start playback.
+     */
+    void video
+      .play()
+      .catch((playError) => {
+        console.warn(
+          "[WebRTCPanel] Remote video autoplay failed:",
+          playError
+        );
+      });
 
     return () => {
+      cancelled =
+        true;
+
+      if (
+        videoFrameCallbackId !==
+        null
+      ) {
+        video.cancelVideoFrameCallback(
+          videoFrameCallbackId
+        );
+
+        videoFrameCallbackId =
+          null;
+      }
+
       if (
         video.srcObject ===
         remoteStream
       ) {
-        video.srcObject = null;
+        video.srcObject =
+          null;
       }
     };
-  }, [remoteStream]);
+  }, [
+    remoteStream,
+  ]);
 
   /*
-   * Host sends avatar state.
+   * ============================================================
+   * SEND AVATAR STATE
+   *
+   * Sends lightweight state information through
+   * the WebRTC DataChannel.
+   * ============================================================
    */
 
   useEffect(() => {
     if (
-      role !== "host" ||
-      status !== "connected"
+      status !==
+      "connected"
     ) {
       return;
     }
 
-    const sendState = () => {
-      sendJSON({
-        type: "avatar-state",
-        emotion,
-        mode,
-        conversationState,
-        timestamp: Date.now(),
-      });
-    };
+    const sendState =
+      () => {
+        sendJSON({
+          type: "avatar-state",
 
+          emotion,
+
+          mode,
+
+          conversationState,
+
+          timestamp:
+            Date.now(),
+        });
+      };
+
+    /*
+     * Send immediately.
+     */
     sendState();
 
+    /*
+     * Continue updating every 500 ms.
+     */
     const interval =
       window.setInterval(
         sendState,
-        500,
+        500
       );
 
     return () => {
       window.clearInterval(
-        interval,
+        interval
       );
     };
   }, [
-    role,
     status,
     emotion,
     mode,
@@ -192,96 +295,146 @@ export default function WebRTCPanel({
   ]);
 
   /*
-   * Create Room
+   * ============================================================
+   * CREATE ROOM
+   * ============================================================
    */
 
   const handleCreateRoom =
     async () => {
-      if (status !== "idle") {
-        return;
-      }
+      console.log(
+        "[WebRTCPanel] Create Room clicked"
+      );
 
-      const newRoom =
-        createRoomId();
-
-      setRoomInput(newRoom);
+      /*
+       * Immediately tell App that this browser
+       * is the Host.
+       */
+      onRoleChange?.(
+        "host"
+      );
 
       try {
-        await connect(
-          signalingUrl,
-          newRoom,
-          true,
+        await startHost();
+
+        console.log(
+          "[WebRTCPanel] Host started"
         );
-      } catch (connectError) {
+      } catch (err) {
         console.error(
-          "[WebRTC] Create room failed:",
-          connectError,
+          "[WebRTCPanel] Create room failed:",
+          err
+        );
+
+        onRoleChange?.(
+          null
         );
       }
     };
 
   /*
-   * Join Room
+   * ============================================================
+   * JOIN ROOM
+   * ============================================================
    */
 
   const handleJoinRoom =
     async () => {
-      const room =
-        roomInput.trim().toUpperCase();
+      const trimmed =
+        roomInput
+          .trim()
+          .toUpperCase();
 
-      if (
-        !room ||
-        status !== "idle"
-      ) {
+      if (!trimmed) {
+        console.warn(
+          "[WebRTCPanel] Room ID is empty"
+        );
+
         return;
       }
 
+      console.log(
+        "[WebRTCPanel] Join Room clicked:",
+        trimmed
+      );
+
+      /*
+       * Immediately tell App that this browser
+       * is the Viewer.
+       */
+      onRoleChange?.(
+        "viewer"
+      );
+
       try {
-        await connect(
-          signalingUrl,
-          room,
-          false,
+        await joinRoom(
+          trimmed
         );
-      } catch (connectError) {
+
+        console.log(
+          "[WebRTCPanel] Viewer started"
+        );
+      } catch (err) {
         console.error(
-          "[WebRTC] Join room failed:",
-          connectError,
+          "[WebRTCPanel] Join room failed:",
+          err
+        );
+
+        onRoleChange?.(
+          null
         );
       }
     };
 
   /*
-   * Copy room ID
+   * ============================================================
+   * LEAVE ROOM
+   * ============================================================
    */
 
-  const handleCopyRoom =
+  const handleLeaveRoom =
     async () => {
-      if (!roomId) {
-        return;
-      }
+      console.log(
+        "[WebRTCPanel] Leaving room"
+      );
 
       try {
-        await navigator.clipboard.writeText(
-          roomId,
+        await leaveRoom();
+      } finally {
+        onRoleChange?.(
+          null
         );
 
-        setCopied(true);
-
-        window.setTimeout(() => {
-          setCopied(false);
-        }, 1500);
-      } catch {
-        console.warn(
-          "[WebRTC] Clipboard unavailable",
-        );
+        setRoomInput("");
       }
     };
 
-  const connected =
-    status === "connected";
+  /*
+   * ============================================================
+   * STATUS
+   * ============================================================
+   */
 
-  const waiting =
-    status === "waiting";
+  const statusLabel =
+    status ===
+    "connected"
+      ? "CONNECTED"
+      : status.toUpperCase();
+
+  const roleLabel =
+    role
+      ? role.toUpperCase()
+      : "—";
+
+  const isActive =
+    status !==
+    "idle";
+
+  /*
+   * ============================================================
+   * UI
+   * ============================================================
+   */
 
   return (
     <section
@@ -289,28 +442,41 @@ export default function WebRTCPanel({
         w-full
         shrink-0
         overflow-hidden
+
         rounded-xl
+
         border
         border-white/10
+
         bg-zinc-950/90
+
         p-3
-        shadow-xl
+
+        shadow-2xl
+
         backdrop-blur-xl
 
         sm:p-4
       "
     >
-      {/* =====================================================
+      {/* ======================================================
           HEADER
-      ====================================================== */}
+      ======================================================= */}
 
-      <div className="flex items-start justify-between gap-3">
+      <div
+        className="
+          mb-3
+          flex
+          items-start
+          justify-between
+          gap-3
+        "
+      >
         <div className="min-w-0">
           <h2
             className="
               text-sm
               font-semibold
-              text-white
             "
           >
             WebRTC Remote Preview
@@ -319,47 +485,48 @@ export default function WebRTCPanel({
           <p
             className="
               mt-0.5
-              text-[10px]
-              text-white/40
-
-              sm:text-xs
+              text-xs
+              text-white/50
             "
           >
             Canvas → WebRTC → Browser
           </p>
         </div>
 
-        <span
+        <div
           className={`
             shrink-0
             rounded-full
             border
             px-2
             py-1
+
             text-[9px]
             font-medium
+
             ${
-              connected
-                ? "border-green-500/20 bg-green-500/10 text-green-400"
-                : waiting
-                  ? "border-yellow-500/20 bg-yellow-500/10 text-yellow-400"
-                  : error
-                    ? "border-red-500/20 bg-red-500/10 text-red-400"
-                    : "border-white/10 bg-white/5 text-zinc-400"
+              status ===
+              "connected"
+                ? "border-green-500/30 bg-green-500/10 text-green-400"
+                : status ===
+                      "error" ||
+                    status ===
+                      "failed"
+                  ? "border-red-500/30 bg-red-500/10 text-red-400"
+                  : "border-white/10 text-zinc-400"
             }
           `}
         >
-          {statusText(status)}
-        </span>
+          {statusLabel}
+        </div>
       </div>
 
-      {/* =====================================================
+      {/* ======================================================
           REMOTE VIDEO
-      ====================================================== */}
+      ======================================================= */}
 
       <div
         className="
-          mt-3
           overflow-hidden
           rounded-lg
           border
@@ -385,63 +552,99 @@ export default function WebRTCPanel({
           <div
             className="
               flex
-              aspect-video
+              min-h-[110px]
               items-center
               justify-center
+
+              px-4
+
               text-center
               text-[10px]
               text-zinc-600
             "
           >
-            {status === "idle"
-              ? "Create or join a room"
-              : role === "host"
-                ? "Waiting for viewer..."
-                : "Waiting for avatar stream..."}
+            {role ===
+            "viewer"
+              ? "Waiting for remote avatar..."
+              : "Create or join a room"}
           </div>
         )}
       </div>
 
-      {/* =====================================================
-          ROOM CONTROLS
-      ====================================================== */}
+      {/* ======================================================
+          CREATE / JOIN
+      ======================================================= */}
 
-      {status === "idle" ? (
-        <div className="mt-3 space-y-2">
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                void handleCreateRoom();
-              }}
-              className="
-                flex-1
-                rounded-lg
-                bg-white
-                px-3
-                py-2
-                text-xs
-                font-medium
-                text-black
-                transition
-                hover:bg-zinc-200
-              "
-            >
-              Create Room
-            </button>
-          </div>
+      {!isActive && (
+        <div
+          className="
+            mt-3
+            space-y-2
+          "
+        >
+          {/* Create Room */}
 
-          <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              void handleCreateRoom();
+            }}
+            className="
+              w-full
+
+              rounded-lg
+
+              bg-white
+
+              px-3
+              py-2.5
+
+              text-sm
+              font-medium
+              text-black
+
+              transition
+
+              hover:bg-zinc-200
+
+              active:scale-[0.99]
+            "
+          >
+            Create Room
+          </button>
+
+          {/* Join Room */}
+
+          <div
+            className="
+              flex
+              gap-2
+            "
+          >
             <input
               type="text"
-              value={roomInput}
-              onChange={(event) =>
+              value={
+                roomInput
+              }
+              onChange={(
+                event,
+              ) => {
                 setRoomInput(
                   event.target.value
-                    .toUpperCase(),
-                )
-              }
-              onKeyDown={(event) => {
+                    .toUpperCase()
+                    .replace(
+                      /[^A-Z0-9]/g,
+                      ""
+                    )
+                    .slice(
+                      0,
+                      6
+                    )
+                );
+              }}
+              onKeyDown={(
+                event,
+              ) => {
                 if (
                   event.key ===
                   "Enter"
@@ -449,24 +652,33 @@ export default function WebRTCPanel({
                   void handleJoinRoom();
                 }
               }}
-              maxLength={6}
               placeholder="ROOM ID"
+              maxLength={6}
               className="
                 min-w-0
                 flex-1
+
                 rounded-lg
+
                 border
                 border-white/10
-                bg-white/5
+
+                bg-zinc-900
+
                 px-3
-                py-2
-                text-xs
-                uppercase
+                py-2.5
+
+                font-mono
+                text-sm
                 tracking-widest
+
                 text-white
+
                 outline-none
-                placeholder:text-zinc-600
-                focus:border-white/20
+
+                placeholder:text-zinc-700
+
+                focus:border-white/30
               "
             />
 
@@ -476,21 +688,26 @@ export default function WebRTCPanel({
                 void handleJoinRoom();
               }}
               disabled={
-                !roomInput.trim()
+                roomInput
+                  .trim()
+                  .length === 0
               }
               className="
-                shrink-0
                 rounded-lg
+
                 border
                 border-white/10
-                bg-white/5
+
                 px-3
                 py-2
-                text-xs
-                font-medium
-                text-zinc-200
+
+                text-sm
+                text-zinc-300
+
                 transition
-                hover:bg-white/10
+
+                hover:bg-white/5
+
                 disabled:cursor-not-allowed
                 disabled:opacity-30
               "
@@ -499,192 +716,234 @@ export default function WebRTCPanel({
             </button>
           </div>
         </div>
-      ) : (
-        <div className="mt-3 space-y-2">
-          {/* Room */}
+      )}
 
+      {/* ======================================================
+          ACTIVE ROOM
+      ======================================================= */}
+
+      {isActive && (
+        <>
           <div
             className="
+              mt-3
+
               rounded-lg
+
               border
               border-white/10
-              bg-white/[0.03]
-              px-3
-              py-2
+
+              bg-white/[0.02]
+
+              p-3
             "
           >
             <div
               className="
-                text-[9px]
-                uppercase
-                tracking-wider
-                text-zinc-500
+                flex
+                items-center
+                justify-between
+                gap-3
               "
             >
-              Room
-            </div>
-
-            <div className="mt-1 flex items-center justify-between gap-2">
-              <span
+              <div
                 className="
-                  font-mono
-                  text-sm
-                  font-semibold
-                  tracking-[0.25em]
-                  text-white
+                  min-w-0
                 "
               >
-                {roomId || roomInput}
-              </span>
+                <div
+                  className="
+                    text-[9px]
+                    uppercase
+                    tracking-wider
+                    text-zinc-500
+                  "
+                >
+                  Room
+                </div>
+
+                <div
+                  className="
+                    mt-1
+
+                    font-mono
+                    text-sm
+                    font-semibold
+
+                    tracking-[0.25em]
+
+                    text-white
+                  "
+                >
+                  {roomId ??
+                    "------"}
+                </div>
+              </div>
 
               <button
                 type="button"
                 onClick={() => {
-                  void handleCopyRoom();
+                  if (
+                    !roomId
+                  ) {
+                    return;
+                  }
+
+                  void navigator.clipboard?.writeText(
+                    roomId
+                  );
                 }}
                 className="
-                  rounded-md
+                  shrink-0
+
+                  rounded-lg
+
                   border
                   border-white/10
-                  bg-white/5
-                  px-2
-                  py-1
-                  text-[9px]
+
+                  px-2.5
+                  py-1.5
+
+                  text-xs
                   text-zinc-300
-                  hover:bg-white/10
+
+                  transition
+
+                  hover:bg-white/5
                 "
               >
-                {copied
-                  ? "Copied"
-                  : "Copy"}
+                Copy
               </button>
             </div>
           </div>
 
-          {/* Role / peers */}
-
-          <div className="grid grid-cols-2 gap-2">
-            <div
-              className="
-                rounded-lg
-                border
-                border-white/10
-                bg-white/[0.03]
-                px-3
-                py-2
-              "
-            >
-              <div className="text-[9px] text-zinc-500">
-                Role
-              </div>
-
-              <div className="mt-0.5 text-xs font-medium text-white">
-                {role === "host"
-                  ? "HOST"
-                  : role === "viewer"
-                    ? "VIEWER"
-                    : "—"}
-              </div>
-            </div>
-
-            <div
-              className="
-                rounded-lg
-                border
-                border-white/10
-                bg-white/[0.03]
-                px-3
-                py-2
-              "
-            >
-              <div className="text-[9px] text-zinc-500">
-                Peers
-              </div>
-
-              <div className="mt-0.5 text-xs font-medium text-white">
-                {peerCount}/2
-              </div>
-            </div>
-          </div>
-
-          {/* Disconnect */}
-
           <button
             type="button"
             onClick={() => {
-              void disconnect();
+              void handleLeaveRoom();
             }}
             className="
+              mt-2
               w-full
+
               rounded-lg
+
               border
               border-white/10
-              bg-white/5
+
               px-3
               py-2
-              text-xs
+
+              text-sm
               text-zinc-300
+
               transition
-              hover:bg-white/10
+
+              hover:bg-white/5
             "
           >
             Leave Room
           </button>
-        </div>
+        </>
       )}
 
-      {/* =====================================================
+      {/* ======================================================
           STATUS
-      ====================================================== */}
+      ======================================================= */}
 
-      <div className="mt-3 space-y-1 text-[10px] text-zinc-500">
-        <div className="flex justify-between gap-3">
-          <span>WebRTC</span>
+      <div
+        className="
+          mt-3
+          space-y-1.5
 
-          <span className="text-zinc-300">
-            {statusText(status)}
-          </span>
-        </div>
+          text-[10px]
+          text-zinc-500
+        "
+      >
+        <StatusRow
+          label="WebRTC"
+          value={statusLabel}
+          active={
+            status ===
+            "connected"
+          }
+        />
 
-        <div className="flex justify-between gap-3">
-          <span>Role</span>
+        <StatusRow
+          label="Role"
+          value={
+            roleLabel
+          }
+          active={
+            role !== null
+          }
+        />
 
-          <span className="text-zinc-300">
-            {role ?? "—"}
-          </span>
-        </div>
+        <StatusRow
+          label="Peers"
+          value={`${peerCount}/2`}
+          active={
+            peerCount > 0
+          }
+        />
 
-        <div className="flex justify-between gap-3">
-          <span>DataChannel</span>
-
-          <span
-            className={
-              lastMessage
-                ? "text-green-400"
-                : "text-zinc-500"
-            }
-          >
-            {lastMessage
+        <StatusRow
+          label="DataChannel"
+          value={
+            lastMessage
               ? "RECEIVING"
-              : "WAITING"}
-          </span>
-        </div>
+              : "WAITING"
+          }
+          active={
+            Boolean(
+              lastMessage
+            )
+          }
+        />
+
+        <StatusRow
+          label="Emotion"
+          value={
+            emotion
+          }
+          active
+        />
+
+        <StatusRow
+          label="Mode"
+          value={
+            mode
+          }
+          active
+        />
+
+        <StatusRow
+          label="State"
+          value={
+            conversationState
+          }
+          active
+        />
       </div>
 
-      {/* =====================================================
+      {/* ======================================================
           ERROR
-      ====================================================== */}
+      ======================================================= */}
 
       {error && (
         <div
           className="
             mt-3
+
             rounded-lg
+
             border
             border-red-500/20
+
             bg-red-500/5
-            px-3
-            py-2
+
+            p-2.5
+
             text-[10px]
             leading-relaxed
             text-red-400
@@ -694,5 +953,71 @@ export default function WebRTCPanel({
         </div>
       )}
     </section>
+  );
+}
+
+function StatusRow({
+  label,
+  value,
+  active,
+}: {
+  label: string;
+  value: string;
+  active: boolean;
+}) {
+  return (
+    <div
+      className="
+        flex
+        items-center
+        justify-between
+        gap-3
+      "
+    >
+      <div
+        className="
+          flex
+          min-w-0
+          items-center
+          gap-2
+        "
+      >
+        <span
+          className={`
+            h-1.5
+            w-1.5
+            shrink-0
+            rounded-full
+
+            ${
+              active
+                ? "bg-green-400"
+                : "bg-zinc-600"
+            }
+          `}
+        />
+
+        <span
+          className="
+            truncate
+          "
+        >
+          {label}
+        </span>
+      </div>
+
+      <span
+        className="
+          max-w-[55%]
+          truncate
+          text-right
+          font-mono
+          text-zinc-300
+        "
+        title={value}
+      >
+        {value}
+      </span>
+    </div>
   );
 }

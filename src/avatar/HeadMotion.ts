@@ -1,5 +1,5 @@
 import * as THREE from "three";
-
+const DEBUG_HEAD_MOTION = false;
 export class HeadMotion {
   private target: THREE.Object3D;
 
@@ -20,8 +20,9 @@ export class HeadMotion {
 
   constructor(target: THREE.Object3D) {
     this.target = target;
-
-    console.log("[HeadMotion] Initialized:", target.name);
+    if (DEBUG_HEAD_MOTION) {
+      console.log("[HeadMotion] Initialized:", target.name);
+    }
   }
 
   update(delta: number, elapsed: number) {
@@ -39,12 +40,13 @@ export class HeadMotion {
 
       // Head tilt
       this.targetZ = (Math.random() - 0.5) * 0.12;
-
-      console.log("[HeadMotion] New target:", {
-        x: this.targetX.toFixed(3),
-        y: this.targetY.toFixed(3),
-        z: this.targetZ.toFixed(3),
-      });
+      if (DEBUG_HEAD_MOTION) {
+        console.log("[HeadMotion] New target:", {
+          x: this.targetX.toFixed(3),
+          y: this.targetY.toFixed(3),
+          z: this.targetZ.toFixed(3),
+        });
+      }
 
       // Random interval between movements
       this.changeInterval = 2.5 + Math.random() * 2.5;

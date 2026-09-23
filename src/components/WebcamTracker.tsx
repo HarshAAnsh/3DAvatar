@@ -1,351 +1,1023 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
-import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
+import {
+  useHeadPoseStore,
+} from "../store/headPoseStore";
 
-import { useHeadPoseStore } from "../store/headPoseStore";
-import { useAvatarStore } from "../store/avatarStore";
+import {
+  useAvatarStore,
+} from "../store/avatarStore";
 
-export default function WebcamTracker() {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+import {
+  MediaPipeWorkerClient,
+  type MediaPipeWorkerResult,
+} from "../avatar/MediaPipeWorkerClient";
 
-  const faceLandmarkerRef = useRef<FaceLandmarker | null>(null);
+type WebcamTrackerProps = {
+  enabled?: boolean;
+};
 
-  const animationFrameRef = useRef<number | null>(null);
+export default function WebcamTracker({
+  enabled = false,
+}: WebcamTrackerProps) {
+  /*
+   * ============================================================
+   * VIDEO
+   * ============================================================
+   */
 
-  const lastVideoTimeRef = useRef(-1);
-
-  const lastDetectionTimeRef = useRef(0);
-
-  const detectionInterval = 50;
-
-  const headMatrixLoggedRef = useRef(false);
-
-  const previousFaceDetectedRef = useRef(false);
-
-  const engine = useAvatarStore((state) => state.engine);
-
-  const headPose = useAvatarStore((state) => state.headPose);
-
-  const mode = useAvatarStore((state) => state.mode);
+  const videoRef =
+    useRef<HTMLVideoElement | null>(
+      null,
+    );
 
   /*
-   * Keep the latest values inside refs so the
-   * MediaPipe detection loop does not need to
-   * restart when Live/Demo changes.
+   * ============================================================
+   * WORKER CLIENT
+   * ============================================================
    */
-  const modeRef = useRef(mode);
 
-  const headPoseRef = useRef(headPose);
+  const workerClientRef =
+    useRef<MediaPipeWorkerClient | null>(
+      null,
+    );
 
-  const engineRef = useRef(engine);
+  /*
+   * ============================================================
+   * DETECTION LOOP
+   * ============================================================
+   */
+
+  const animationFrameRef =
+    useRef<number | null>(
+      null,
+    );
+
+  const lastVideoTimeRef =
+    useRef(-1);
+
+  const lastDetectionTimeRef =
+    useRef(0);
+
+  /*
+   * ~8 inference requests/sec.
+   */
+  const detectionInterval =
+    125;
+
+  /*
+   * ============================================================
+   * STATE REFS
+   * ============================================================
+   */
+
+  const previousFaceDetectedRef =
+    useRef(false);
+
+  const headMatrixLoggedRef =
+    useRef(false);
+
+  /*
+   * ============================================================
+   * AVATAR STORE
+   * ============================================================
+   */
+
+  const engine =
+    useAvatarStore(
+      (state) => state.engine,
+    );
+
+  const headPose =
+    useAvatarStore(
+      (state) => state.headPose,
+    );
+
+  const mode =
+    useAvatarStore(
+      (state) => state.mode,
+    );
+
+  /*
+   * ============================================================
+   * LATEST STATE REFS
+   * ============================================================
+   */
+
+  const modeRef =
+    useRef(mode);
+
+  const engineRef =
+    useRef(engine);
+
+  const headPoseRef =
+    useRef(headPose);
 
   useEffect(() => {
-    modeRef.current = mode;
+    modeRef.current =
+      mode;
   }, [mode]);
 
   useEffect(() => {
-    headPoseRef.current = headPose;
-  }, [headPose]);
-
-  useEffect(() => {
-    engineRef.current = engine;
+    engineRef.current =
+      engine;
   }, [engine]);
 
-  /*
-   * Get the setter directly from Zustand.
-   *
-   * This avoids the implicit-any issue around
-   * the selector callback in an untyped store.
-   */
-  const setHeadTracking = useHeadPoseStore.getState().setTracking;
-
-  const [cameraActive, setCameraActive] = useState(false);
-
-  const [faceDetected, setFaceDetected] = useState(false);
-
-  const [trackingReady, setTrackingReady] = useState(false);
-
-  const [error, setError] = useState<string | null>(null);
-
   useEffect(() => {
-    let stream: MediaStream | null = null;
-    let cancelled = false;
+    headPoseRef.current =
+      headPose;
+  }, [headPose]);
 
-    const initialize = async () => {
-      try {
-        console.log("[MediaPipe] Initializing vision tasks...");
+  /*
+   * ============================================================
+   * HEAD TRACKING
+   * ============================================================
+   */
 
-        /*
-         * Load MediaPipe WASM
-         */
-        const vision = await FilesetResolver.forVisionTasks(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm",
+  const setHeadTracking =
+    useHeadPoseStore
+      .getState()
+      .setTracking;
+
+  /*
+   * ============================================================
+   * UI STATE
+   * ============================================================
+   */
+
+  const [
+    cameraActive,
+    setCameraActive,
+  ] =
+    useState(false);
+
+  const [
+    faceDetected,
+    setFaceDetected,
+  ] =
+    useState(false);
+
+  const [
+    trackingReady,
+    setTrackingReady,
+  ] =
+    useState(false);
+
+  const [
+    error,
+    setError,
+  ] =
+    useState<string | null>(
+      null,
+    );
+
+  /*
+   * ============================================================
+   * APPLY WORKER RESULT
+   * ============================================================
+   */
+
+  const applyWorkerResult =
+    (
+      result: MediaPipeWorkerResult,
+    ) => {
+      const {
+        faceDetected:
+          hasFace,
+        blendshapes,
+        headMatrix,
+      } = result;
+
+      const currentEngine =
+        engineRef.current;
+
+      const currentHeadPose =
+        headPoseRef.current;
+
+      /*
+       * --------------------------------------------------------
+       * PERFORMANCE TELEMETRY
+       * --------------------------------------------------------
+       */
+
+      window.dispatchEvent(
+        new CustomEvent(
+          "avatar:mediapipe-frame",
+        ),
+      );
+
+      /*
+       * --------------------------------------------------------
+       * HEAD TRACKING
+       * --------------------------------------------------------
+       */
+
+      if (
+        currentHeadPose
+      ) {
+        currentHeadPose.setTrackingActive(
+          modeRef.current ===
+            "live" &&
+          hasFace,
+        );
+      }
+
+      /*
+       * --------------------------------------------------------
+       * FACE PRESENCE
+       * --------------------------------------------------------
+       */
+
+      if (
+        hasFace !==
+        previousFaceDetectedRef.current
+      ) {
+        previousFaceDetectedRef.current =
+          hasFace;
+
+        setFaceDetected(
+          hasFace,
         );
 
-        if (cancelled) return;
+        setHeadTracking(
+          modeRef.current ===
+            "live" &&
+          hasFace,
+        );
+      }
 
-        /*
-         * Create Face Landmarker
-         */
-        const faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: "/models/face_landmarker.task",
-          },
+      /*
+       * --------------------------------------------------------
+       * HEAD POSE
+       * --------------------------------------------------------
+       */
 
-          runningMode: "VIDEO",
+      if (
+        modeRef.current ===
+          "live" &&
+        hasFace &&
+        headMatrix
+      ) {
+        currentHeadPose?.setMatrix(
+          headMatrix,
+        );
 
-          numFaces: 1,
+        if (
+          !headMatrixLoggedRef.current
+        ) {
+          headMatrixLoggedRef.current =
+            true;
 
-          outputFaceBlendshapes: true,
-
-          outputFacialTransformationMatrixes: true,
-        });
-
-        if (cancelled) {
-          faceLandmarker.close();
-          return;
+          console.log(
+            "[MediaPipe Worker] Head pose matrix connected",
+          );
         }
+      }
 
-        faceLandmarkerRef.current = faceLandmarker;
+      /*
+       * --------------------------------------------------------
+       * ARKIT 52 BLENDSHAPES
+       * --------------------------------------------------------
+       */
 
-        setTrackingReady(true);
-
-        console.log("[MediaPipe] Face Landmarker ready");
-
-        /*
-         * Camera
-         */
-        console.log("[Webcam] Requesting camera...");
-
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: {
-              ideal: 640,
-            },
-            height: {
-              ideal: 480,
-            },
-            facingMode: "user",
-          },
-          audio: false,
-        });
-
-        if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop());
-
-          return;
+      if (
+        modeRef.current ===
+          "live" &&
+        hasFace &&
+        currentEngine
+      ) {
+        for (
+          const category of
+            blendshapes
+        ) {
+          currentEngine.setARKitBlendshape(
+            category.categoryName,
+            category.score,
+            "mediapipe",
+          );
         }
+      }
 
-        if (!videoRef.current) {
-          return;
-        }
+      /*
+       * --------------------------------------------------------
+       * NO FACE
+       * --------------------------------------------------------
+       */
 
-        videoRef.current.srcObject = stream;
+      if (
+        modeRef.current ===
+          "live" &&
+        !hasFace
+      ) {
+        currentEngine?.clearSource(
+          "mediapipe",
+        );
+      }
 
-        await videoRef.current.play();
+      /*
+       * --------------------------------------------------------
+       * NON-LIVE SAFETY
+       * --------------------------------------------------------
+       */
 
-        if (cancelled) return;
+      if (
+        modeRef.current !==
+        "live"
+      ) {
+        currentEngine?.clearSource(
+          "mediapipe",
+        );
 
-        setCameraActive(true);
-
-        console.log("[Webcam] Camera started");
-
-        startDetection();
-      } catch (err) {
-        if (cancelled) return;
-
-        console.error("[Webcam/MediaPipe] Error:", err);
-
-        setError("Unable to start camera or MediaPipe.");
+        currentHeadPose?.setTrackingActive(
+          false,
+        );
       }
     };
 
+  /*
+   * ============================================================
+   * CAMERA + WORKER LIFECYCLE
+   * ============================================================
+   */
+
+  useEffect(() => {
     /*
-     * Detection loop
+     * ========================================================
+     * DISABLED
+     * ========================================================
      */
-    const startDetection = () => {
-      const detectFrame = () => {
-        if (cancelled) {
+
+    if (!enabled) {
+      console.log(
+        "[Webcam] Disabled - skipping camera and MediaPipe",
+      );
+
+      /*
+       * Stop RAF.
+       */
+
+      if (
+        animationFrameRef.current !==
+        null
+      ) {
+        cancelAnimationFrame(
+          animationFrameRef.current,
+        );
+
+        animationFrameRef.current =
+          null;
+      }
+
+      /*
+       * Destroy worker.
+       */
+
+      workerClientRef.current?.destroy();
+
+      workerClientRef.current =
+        null;
+
+      /*
+       * Stop camera.
+       */
+
+      if (
+        videoRef.current
+      ) {
+        videoRef.current.pause();
+
+        const source =
+          videoRef.current
+            .srcObject;
+
+        if (
+          source instanceof
+          MediaStream
+        ) {
+          source
+            .getTracks()
+            .forEach(
+              (track) =>
+                track.stop(),
+            );
+        }
+
+        videoRef.current.srcObject =
+          null;
+      }
+
+      /*
+       * Clear state.
+       */
+
+      engineRef.current?.clearSource(
+        "mediapipe",
+      );
+
+      setHeadTracking(
+        false,
+      );
+
+      headPoseRef.current?.setTrackingActive(
+        false,
+      );
+
+      previousFaceDetectedRef.current =
+        false;
+
+      headMatrixLoggedRef.current =
+        false;
+
+      lastVideoTimeRef.current =
+        -1;
+
+      lastDetectionTimeRef.current =
+        0;
+
+      setCameraActive(
+        false,
+      );
+
+      setTrackingReady(
+        false,
+      );
+
+      setFaceDetected(
+        false,
+      );
+
+      setError(
+        null,
+      );
+
+      return;
+    }
+
+    /*
+     * ========================================================
+     * ENABLED
+     * ========================================================
+     */
+
+    let stream:
+      | MediaStream
+      | null = null;
+
+    let cancelled = false;
+
+    /*
+     * ========================================================
+     * CREATE WORKER CLIENT
+     * ========================================================
+     */
+
+    const workerClient =
+      new MediaPipeWorkerClient();
+
+    workerClientRef.current =
+      workerClient;
+
+    /*
+     * Worker result callback.
+     */
+
+    workerClient.onResult(
+      (
+        result,
+      ) => {
+        if (
+          cancelled
+        ) {
           return;
         }
 
-        const video = videoRef.current;
+        applyWorkerResult(
+          result,
+        );
+      },
+    );
 
-        const landmarker = faceLandmarkerRef.current;
+    /*
+     * Worker error callback.
+     */
 
-        if (!video || !landmarker) {
-          animationFrameRef.current = requestAnimationFrame(detectFrame);
-
+    workerClient.onError(
+      (
+        workerError,
+      ) => {
+        if (
+          cancelled
+        ) {
           return;
         }
 
-        if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-          const now = performance.now();
+        console.error(
+          "[MediaPipe Worker]",
+          workerError,
+        );
 
-          if (
-            video.currentTime !== lastVideoTimeRef.current &&
-            now - lastDetectionTimeRef.current >= detectionInterval
-          ) {
-            lastVideoTimeRef.current = video.currentTime;
+        setError(
+          workerError,
+        );
 
-            lastDetectionTimeRef.current = now;
+        setTrackingReady(
+          false,
+        );
+      },
+    );
 
-            const result = landmarker.detectForVideo(video, now);
+    /*
+     * ========================================================
+     * START DETECTION LOOP
+     * ========================================================
+     */
 
-            const hasFace = result.faceLandmarks.length > 0;
-            const currentHeadPose = headPoseRef.current;
+    const startDetection =
+      () => {
+        const detectFrame =
+          async () => {
+            if (
+              cancelled
+            ) {
+              return;
+            }
 
-            if (currentHeadPose) {
-              currentHeadPose.setTrackingActive(
-                modeRef.current === "live" && hasFace,
+            const video =
+              videoRef.current;
+
+            const client =
+              workerClientRef.current;
+
+            if (
+              !video ||
+              !client
+            ) {
+              animationFrameRef.current =
+                requestAnimationFrame(
+                  () => {
+                    void detectFrame();
+                  },
+                );
+
+              return;
+            }
+
+            /*
+             * Camera must have usable data.
+             */
+
+            if (
+              video.readyState <
+              HTMLMediaElement.HAVE_CURRENT_DATA
+            ) {
+              animationFrameRef.current =
+                requestAnimationFrame(
+                  () => {
+                    void detectFrame();
+                  },
+                );
+
+              return;
+            }
+
+            const now =
+              performance.now();
+
+            /*
+             * Only request a new inference when:
+             *
+             * 1. Video advanced
+             * 2. 125ms elapsed
+             */
+
+            const newVideoFrame =
+              video.currentTime !==
+              lastVideoTimeRef.current;
+
+            const enoughTimeElapsed =
+              now -
+                lastDetectionTimeRef.current >=
+              detectionInterval;
+
+            if (
+              newVideoFrame &&
+              enoughTimeElapsed &&
+              client.isReady()
+            ) {
+              /*
+               * Update timing before sending.
+               */
+
+              lastVideoTimeRef.current =
+                video.currentTime;
+
+              lastDetectionTimeRef.current =
+                now;
+
+              /*
+               * detect() returns immediately after
+               * transferring the ImageBitmap to the worker.
+               *
+               * This keeps the main thread free while
+               * Face Landmarker works in the worker.
+               */
+
+              void client.detect(
+                video,
+                now,
               );
             }
-            /*
-             * Face tracking state
-             */
-            if (hasFace !== previousFaceDetectedRef.current) {
-              previousFaceDetectedRef.current = hasFace;
-
-              setFaceDetected(hasFace);
-
-              setHeadTracking(hasFace);
-            }
 
             /*
-             * HEAD POSE
-             *
-             * Only apply head pose in
-             * Live mode.
+             * Continue RAF without waiting for
+             * MediaPipe inference to finish.
              */
-            if (
-              modeRef.current === "live" &&
-              hasFace &&
-              result.facialTransformationMatrixes.length > 0
-            ) {
-              const matrix = result.facialTransformationMatrixes[0];
 
-              const currentHeadPose = headPoseRef.current;
+            animationFrameRef.current =
+              requestAnimationFrame(
+                () => {
+                  void detectFrame();
+                },
+              );
+          };
 
-              if (currentHeadPose) {
-                currentHeadPose.setMatrix(matrix.data);
-              }
-
-              if (!headMatrixLoggedRef.current) {
-                headMatrixLoggedRef.current = true;
-
-                console.log("[MediaPipe] Head pose matrix connected");
-              }
-            }
-
-            const currentEngine = engineRef.current;
-
-            /*
-             * FACE BLENDSHAPES
-             *
-             * Only apply MediaPipe
-             * facial data in Live mode.
-             */
-            if (
-              modeRef.current === "live" &&
-              hasFace &&
-              result.faceBlendshapes.length > 0 &&
-              currentEngine
-            ) {
-              const categories = result.faceBlendshapes[0].categories;
-
-              for (const category of categories) {
-                currentEngine.setARKitBlendshape(
-                  category.categoryName,
-                  category.score,
-                  "mediapipe",
-                );
-              }
-            }
-
-            /*
-             * When the user leaves Live mode,
-             * remove old MediaPipe values.
-             *
-             * This is important because otherwise
-             * previous facial values could remain
-             * active while in Demo mode.
-             */
-            if (modeRef.current !== "live" && currentEngine) {
-              currentEngine.clearSource("mediapipe");
-            }
-
-            /*
-             * When no face is detected in Live mode,
-             * clear MediaPipe facial values.
-             */
-            if (modeRef.current === "live" && !hasFace && currentEngine) {
-              currentEngine.clearSource("mediapipe");
-            }
-          }
-        }
-
-        animationFrameRef.current = requestAnimationFrame(detectFrame);
+        animationFrameRef.current =
+          requestAnimationFrame(
+            () => {
+              void detectFrame();
+            },
+          );
       };
 
-      animationFrameRef.current = requestAnimationFrame(detectFrame);
-    };
+    /*
+     * ========================================================
+     * INITIALIZE CAMERA + WORKER
+     * ========================================================
+     */
 
-    initialize();
+    const initialize =
+      async () => {
+        try {
+          setError(
+            null,
+          );
+
+          setCameraActive(
+            false,
+          );
+
+          setTrackingReady(
+            false,
+          );
+
+          setFaceDetected(
+            false,
+          );
+
+          /*
+           * Start worker initialization.
+           */
+
+          workerClient.initialize(
+            "/models/face_landmarker.task",
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm",
+          );
+
+          /*
+           * Camera API.
+           */
+
+          if (
+            !navigator.mediaDevices ||
+            !navigator.mediaDevices
+              .getUserMedia
+          ) {
+            throw new Error(
+              "Camera API is not available in this browser.",
+            );
+          }
+
+          console.log(
+            "[Webcam] Requesting camera...",
+          );
+
+          /*
+           * Lower-resolution camera.
+           */
+
+          stream =
+            await navigator.mediaDevices.getUserMedia(
+              {
+                video: {
+                  width: {
+                    ideal: 320,
+                  },
+
+                  height: {
+                    ideal: 240,
+                  },
+
+                  facingMode:
+                    "user",
+                },
+
+                audio: false,
+              },
+            );
+
+          if (
+            cancelled
+          ) {
+            stream
+              .getTracks()
+              .forEach(
+                (
+                  track,
+                ) =>
+                  track.stop(),
+              );
+
+            stream =
+              null;
+
+            return;
+          }
+
+          const video =
+            videoRef.current;
+
+          if (!video) {
+            stream
+              .getTracks()
+              .forEach(
+                (
+                  track,
+                ) =>
+                  track.stop(),
+              );
+
+            stream =
+              null;
+
+            return;
+          }
+
+          /*
+           * Attach stream.
+           */
+
+          video.srcObject =
+            stream;
+
+          await video.play();
+
+          if (
+            cancelled
+          ) {
+            stream
+              .getTracks()
+              .forEach(
+                (
+                  track,
+                ) =>
+                  track.stop(),
+              );
+
+            stream =
+              null;
+
+            return;
+          }
+
+          setCameraActive(
+            true,
+          );
+
+          console.log(
+            "[Webcam] Camera started",
+          );
+
+          /*
+           * Start worker inference loop.
+           */
+          startDetection();
+        } catch (
+          err
+        ) {
+          if (
+            cancelled
+          ) {
+            return;
+          }
+
+          console.error(
+            "[Webcam/MediaPipe Worker] Error:",
+            err,
+          );
+
+          const message =
+            err instanceof Error
+              ? err.message
+              : "Unable to start camera or MediaPipe worker.";
+
+          setError(
+            message,
+          );
+
+          setCameraActive(
+            false,
+          );
+
+          setTrackingReady(
+            false,
+          );
+
+          setFaceDetected(
+            false,
+          );
+
+          setHeadTracking(
+            false,
+          );
+
+          headPoseRef.current?.setTrackingActive(
+            false,
+          );
+
+          engineRef.current?.clearSource(
+            "mediapipe",
+          );
+        }
+      };
 
     /*
-     * Cleanup
+     * Initialize.
      */
+    void initialize();
+
+    /*
+     * ========================================================
+     * CLEANUP
+     * ========================================================
+     */
+
     return () => {
-      console.log("[Webcam] Cleaning up");
+      console.log(
+        "[Webcam] Cleaning up",
+      );
 
-      cancelled = true;
+      cancelled =
+        true;
 
-      if (animationFrameRef.current !== null) {
-        cancelAnimationFrame(animationFrameRef.current);
+      /*
+       * Stop RAF.
+       */
 
-        animationFrameRef.current = null;
+      if (
+        animationFrameRef.current !==
+        null
+      ) {
+        cancelAnimationFrame(
+          animationFrameRef.current,
+        );
+
+        animationFrameRef.current =
+          null;
       }
 
-      stream?.getTracks().forEach((track) => track.stop());
+      /*
+       * Stop camera.
+       */
 
-      if (videoRef.current) {
+      stream
+        ?.getTracks()
+        .forEach(
+          (
+            track,
+          ) =>
+            track.stop(),
+        );
+
+      stream =
+        null;
+
+      /*
+       * Detach camera.
+       */
+
+      if (
+        videoRef.current
+      ) {
         videoRef.current.pause();
-        videoRef.current.srcObject = null;
+
+        videoRef.current.srcObject =
+          null;
       }
 
-      faceLandmarkerRef.current?.close();
+      /*
+       * Destroy worker.
+       */
 
-      faceLandmarkerRef.current = null;
+      workerClient.destroy();
 
-      previousFaceDetectedRef.current = false;
+      workerClientRef.current =
+        null;
 
-      headMatrixLoggedRef.current = false;
+      /*
+       * Clear facial source.
+       */
 
-      setCameraActive(false);
-      setTrackingReady(false);
-      setFaceDetected(false);
+      engineRef.current?.clearSource(
+        "mediapipe",
+      );
 
-      setHeadTracking(false);
+      setHeadTracking(
+        false,
+      );
 
-      headPoseRef.current?.setTrackingActive(false);
+      headPoseRef.current?.setTrackingActive(
+        false,
+      );
+
+      /*
+       * Reset state.
+       */
+
+      previousFaceDetectedRef.current =
+        false;
+
+      headMatrixLoggedRef.current =
+        false;
+
+      lastVideoTimeRef.current =
+        -1;
+
+      lastDetectionTimeRef.current =
+        0;
+
+      setCameraActive(
+        false,
+      );
+
+      setTrackingReady(
+        false,
+      );
+
+      setFaceDetected(
+        false,
+      );
     };
-  }, []);
+  }, [
+    enabled,
+  ]);
+
+  /*
+   * ============================================================
+   * DISABLED
+   * ============================================================
+   */
+
+  if (!enabled) {
+    return null;
+  }
+
+  /*
+   * ============================================================
+   * UI
+   * ============================================================
+   */
 
   return (
     <div
       className="
-    w-full
-    max-w-sm
-    overflow-hidden
-    rounded-xl
-    border
-    border-white/10
-    bg-black/80
-    shadow-2xl
-    backdrop-blur-xl
-  "
+        w-full
+        max-w-sm
+        shrink-0
+        overflow-hidden
+
+        rounded-xl
+
+        border
+        border-white/10
+
+        bg-black/80
+
+        shadow-2xl
+
+        backdrop-blur-xl
+      "
     >
-      <div className="relative aspect-video w-full">
+      <div
+        className="
+          relative
+          aspect-[4/3]
+          w-full
+        "
+      >
         <video
           ref={videoRef}
           muted
@@ -353,38 +1025,54 @@ export default function WebcamTracker() {
           className="
             h-full
             w-full
+
             object-cover
+
             -scale-x-100
           "
         />
 
-        {!cameraActive && !error && (
-          <div
-            className="
+        {!cameraActive &&
+          !error && (
+            <div
+              className="
                 absolute
                 inset-0
+
                 flex
                 items-center
                 justify-center
+
+                bg-black/40
+
                 text-xs
                 text-zinc-400
               "
-          >
-            Starting camera...
-          </div>
-        )}
+            >
+              {trackingReady
+                ? "Starting face tracking..."
+                : "Starting MediaPipe worker..."}
+            </div>
+          )}
 
         {error && (
           <div
             className="
               absolute
               inset-0
+
               flex
               items-center
               justify-center
-              p-3
+
+              bg-black/70
+
+              p-4
+
               text-center
+
               text-xs
+              leading-relaxed
               text-red-400
             "
           >
@@ -398,18 +1086,29 @@ export default function WebcamTracker() {
               absolute
               left-2
               top-2
+
               flex
               items-center
               gap-1.5
+
               rounded-full
+
               bg-black/70
+
               px-2
               py-1
+
               text-[10px]
+
+              backdrop-blur-sm
             "
           >
             <span
-              className={faceDetected ? "text-green-400" : "text-yellow-400"}
+              className={
+                faceDetected
+                  ? "text-green-400"
+                  : "text-yellow-400"
+              }
             >
               ●
             </span>
@@ -419,7 +1118,7 @@ export default function WebcamTracker() {
                 ? "FACE TRACKED"
                 : trackingReady
                   ? "NO FACE"
-                  : "LOADING"}
+                  : "STARTING"}
             </span>
           </div>
         )}

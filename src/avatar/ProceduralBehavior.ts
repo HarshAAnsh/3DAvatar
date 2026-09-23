@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { FacialAnimationEngine } from "./FacialAnimationEngine";
 
+const DEBUG_PROCEDURAL = false;
+
 export class ProceduralBehavior {
   private engine: FacialAnimationEngine;
 
@@ -44,7 +46,9 @@ export class ProceduralBehavior {
     this.blinkTimer += delta;
 
     if (!this.isBlinking && this.blinkTimer >= this.nextBlinkTime) {
-      console.log("[ProceduralBehavior] BLINK");
+      if (DEBUG_PROCEDURAL) {
+        console.log("[ProceduralBehavior] BLINK");
+      }
 
       this.isBlinking = true;
       this.blinkProgress = 0;
@@ -100,12 +104,13 @@ export class ProceduralBehavior {
       this.targetGazeX = (Math.random() - 0.5) * 1.2;
 
       this.targetGazeY = (Math.random() - 0.5) * 0.8;
-
-      console.log(
-        "[ProceduralBehavior] New gaze target:",
-        this.targetGazeX.toFixed(2),
-        this.targetGazeY.toFixed(2),
-      );
+      if (DEBUG_PROCEDURAL) {
+        console.log(
+          "[ProceduralBehavior] New gaze target:",
+          this.targetGazeX.toFixed(2),
+          this.targetGazeY.toFixed(2),
+        );
+      }
     }
 
     // Smooth movement toward target
