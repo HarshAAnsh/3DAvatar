@@ -20,6 +20,17 @@ const DEFAULT_SIGNALING_URL =
   import.meta.env.VITE_SIGNALING_URL ||
   "ws://localhost:8080";
 
+type SavedConnection = {
+  role: "host" | "viewer";
+  roomId: string;
+};
+
+/*
+ * ============================================================
+ * ROOM ID
+ * ============================================================
+ */
+
 function createRoomId(): string {
   const characters =
     "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -27,66 +38,116 @@ function createRoomId(): string {
   let result = "";
 
   for (let i = 0; i < 6; i++) {
-    const index = Math.floor(
-      Math.random() *
-        characters.length
-    );
+    const index =
+      Math.floor(
+        Math.random() *
+          characters.length,
+      );
 
-    result += characters[index];
+    result +=
+      characters[index];
   }
 
   return result;
 }
 
+/*
+ * ============================================================
+ * WEBRTC HOOK
+ * ============================================================
+ */
+
 export function useWebRTC(
-  canvas: HTMLCanvasElement | null
+  canvas: HTMLCanvasElement | null,
 ) {
   /*
-   * ============================================================
+   * ==========================================================
    * CONTROLLER
-   * ============================================================
+   * ==========================================================
    */
 
   const controllerRef =
     useRef<PeerWebRTCController | null>(
-      null
+      null,
     );
 
   /*
-   * ============================================================
-   * REACTIVE STATE
-   * ============================================================
+   * ==========================================================
+   * LAST SUCCESSFUL / ATTEMPTED CONNECTION
+   *
+   * Used by Reconnect.
+   * ==========================================================
    */
 
-  const [status, setStatus] =
-    useState<PeerConnectionState>(
-      "idle"
+  const lastConnectionRef =
+    useRef<SavedConnection | null>(
+      null,
     );
-
-  const [role, setRole] =
-    useState<PeerRole>(null);
-
-  const [roomId, setRoomId] =
-    useState<string | null>(null);
-
-  const [peerCount, setPeerCount] =
-    useState(0);
-
-  const [remoteStream, setRemoteStream] =
-    useState<MediaStream | null>(
-      null
-    );
-
-  const [lastMessage, setLastMessage] =
-    useState<unknown>(null);
-
-  const [error, setError] =
-    useState<string | null>(null);
 
   /*
-   * ============================================================
+   * ==========================================================
+   * REACTIVE STATE
+   * ==========================================================
+   */
+
+  const [
+    status,
+    setStatus,
+  ] =
+    useState<PeerConnectionState>(
+      "idle",
+    );
+
+  const [
+    role,
+    setRole,
+  ] =
+    useState<PeerRole>(
+      null,
+    );
+
+  const [
+    roomId,
+    setRoomId,
+  ] =
+    useState<string | null>(
+      null,
+    );
+
+  const [
+    peerCount,
+    setPeerCount,
+  ] =
+    useState(0);
+
+  const [
+    remoteStream,
+    setRemoteStream,
+  ] =
+    useState<MediaStream | null>(
+      null,
+    );
+
+  const [
+    lastMessage,
+    setLastMessage,
+  ] =
+    useState<unknown>(
+      null,
+    );
+
+  const [
+    error,
+    setError,
+  ] =
+    useState<string | null>(
+      null,
+    );
+
+  /*
+   * ==========================================================
    * CONTROLLER INITIALIZATION
-   * ============================================================
+   * ==========================================================
    */
 
   useEffect(() => {
@@ -96,18 +157,41 @@ export function useWebRTC(
       new PeerWebRTCController({
         /*
          * ------------------------------------------------------
-         * STATUS
+         * CONNECTION STATUS
          * ------------------------------------------------------
          */
 
         onStatusChange: (
-          nextStatus
+          nextStatus,
         ) => {
           if (!mounted) {
             return;
           }
 
-          setStatus(nextStatus);
+          setStatus(
+            nextStatus,
+          );
+
+          /*
+           * If the WebRTC connection is lost,
+           * remove the old remote media from React.
+           */
+          if (
+            nextStatus ===
+              "disconnected" ||
+            nextStatus ===
+              "failed" ||
+            nextStatus ===
+              "closed"
+          ) {
+            setRemoteStream(
+              null,
+            );
+
+            setLastMessage(
+              null,
+            );
+          }
         },
 
         /*
@@ -117,17 +201,19 @@ export function useWebRTC(
          */
 
         onRemoteStream: (
-          stream
+          stream,
         ) => {
           if (!mounted) {
             return;
           }
 
           console.log(
-            "[WebRTC Hook] Remote stream received"
+            "[WebRTC Hook] Remote stream received",
           );
 
-          setRemoteStream(stream);
+          setRemoteStream(
+            stream,
+          );
         },
 
         /*
@@ -137,13 +223,15 @@ export function useWebRTC(
          */
 
         onDataMessage: (
-          data
+          data,
         ) => {
           if (!mounted) {
             return;
           }
 
-          setLastMessage(data);
+          setLastMessage(
+            data,
+          );
         },
 
         /*
@@ -155,7 +243,7 @@ export function useWebRTC(
         onRoomJoined: (
           joinedRoomId,
           count,
-          joinedRole
+          joinedRole,
         ) => {
           if (!mounted) {
             return;
@@ -167,20 +255,24 @@ export function useWebRTC(
             "peers:",
             count,
             "role:",
-            joinedRole
+            joinedRole,
           );
 
           setRoomId(
-            joinedRoomId
+            joinedRoomId,
           );
 
-          setPeerCount(count);
+          setPeerCount(
+            count,
+          );
 
           setRole(
-            joinedRole
+            joinedRole,
           );
 
-          setError(null);
+          setError(
+            null,
+          );
         },
 
         /*
@@ -195,12 +287,11 @@ export function useWebRTC(
           }
 
           console.log(
-            "[WebRTC Hook] Peer ready"
+            "[WebRTC Hook] Peer ready",
           );
 
           /*
-           * A room can have:
-           * Host + Viewer = 2 peers
+           * Host + Viewer
            */
           setPeerCount(2);
         },
@@ -217,10 +308,34 @@ export function useWebRTC(
           }
 
           console.log(
-            "[WebRTC Hook] Peer left"
+            "[WebRTC Hook] Peer left",
           );
 
+          /*
+           * Keep the current browser in the room.
+           *
+           * There is still one peer:
+           * the current browser itself.
+           */
           setPeerCount(1);
+
+          /*
+           * Remove the previous remote stream.
+           */
+          setRemoteStream(
+            null,
+          );
+
+          /*
+           * Stop showing stale DataChannel state.
+           */
+          setLastMessage(
+            null,
+          );
+
+          setError(
+            null,
+          );
         },
 
         /*
@@ -230,7 +345,7 @@ export function useWebRTC(
          */
 
         onError: (
-          message
+          message,
         ) => {
           if (!mounted) {
             return;
@@ -238,15 +353,23 @@ export function useWebRTC(
 
           console.error(
             "[WebRTC Hook]",
-            message
+            message,
           );
 
-          setError(message);
+          setError(
+            message,
+          );
         },
       });
 
     controllerRef.current =
       controller;
+
+    /*
+     * --------------------------------------------------------
+     * CLEANUP
+     * --------------------------------------------------------
+     */
 
     return () => {
       mounted = false;
@@ -259,53 +382,79 @@ export function useWebRTC(
   }, []);
 
   /*
-   * ============================================================
+   * ==========================================================
    * START HOST
-   * ============================================================
+   * ==========================================================
    */
 
   const startHost =
     useCallback(
       async (
-        requestedRoomId?: string
+        requestedRoomId?: string,
       ) => {
         const controller =
           controllerRef.current;
 
         if (!controller) {
           throw new Error(
-            "WebRTC controller is not ready."
+            "WebRTC controller is not ready.",
           );
         }
 
         if (!canvas) {
           throw new Error(
-            "Avatar canvas is not ready."
+            "Avatar canvas is not ready.",
           );
         }
 
         const finalRoomId =
-          requestedRoomId?.trim().toUpperCase() ||
+          requestedRoomId
+            ?.trim()
+            .toUpperCase() ||
           createRoomId();
 
         /*
-         * Immediately expose Host role to React.
+         * Save connection information
+         * for reconnect.
          */
-        setRole("host");
+        lastConnectionRef.current =
+          {
+            role: "host",
+            roomId:
+              finalRoomId,
+          };
 
-        setRoomId(
-          finalRoomId
+        /*
+         * Immediately expose Host
+         * role to React.
+         */
+        setRole(
+          "host",
         );
 
-        setError(null);
+        setRoomId(
+          finalRoomId,
+        );
 
-        setLastMessage(null);
+        setError(
+          null,
+        );
 
-        setPeerCount(0);
+        setLastMessage(
+          null,
+        );
+
+        setRemoteStream(
+          null,
+        );
+
+        setPeerCount(
+          0,
+        );
 
         console.log(
           "[WebRTC Hook] Starting HOST:",
-          finalRoomId
+          finalRoomId,
         );
 
         try {
@@ -313,54 +462,68 @@ export function useWebRTC(
             DEFAULT_SIGNALING_URL,
             finalRoomId,
             true,
-            canvas
+            canvas,
           );
 
-          /*
-           * Controller will also report role
-           * through onRoomJoined.
-           */
-          setRole("host");
+          setRole(
+            "host",
+          );
+
           setRoomId(
-            finalRoomId
+            finalRoomId,
           );
         } catch (err) {
-          setRole(null);
+          lastConnectionRef.current =
+            null;
 
-          setRoomId(null);
+          setRole(
+            null,
+          );
 
-          setPeerCount(0);
+          setRoomId(
+            null,
+          );
+
+          setPeerCount(
+            0,
+          );
+
+          setRemoteStream(
+            null,
+          );
 
           const message =
             err instanceof Error
               ? err.message
               : "Unable to start WebRTC host.";
 
-          setError(message);
+          setError(
+            message,
+          );
 
           throw err;
         }
       },
-      [canvas]
+      [canvas],
     );
 
   /*
-   * ============================================================
+   * ==========================================================
    * JOIN AS VIEWER
-   * ============================================================
+   * ==========================================================
    */
 
   const joinRoom =
     useCallback(
       async (
-        requestedRoomId: string
+        requestedRoomId: string,
       ) => {
         const controller =
           controllerRef.current;
 
         if (!controller) {
           throw new Error(
-            "WebRTC controller is not ready."
+            "WebRTC controller is not ready.",
           );
         }
 
@@ -371,28 +534,52 @@ export function useWebRTC(
 
         if (!finalRoomId) {
           throw new Error(
-            "Room ID is required."
+            "Room ID is required.",
           );
         }
 
         /*
-         * Immediately expose Viewer role to React.
+         * Save connection information
+         * for reconnect.
          */
-        setRole("viewer");
+        lastConnectionRef.current =
+          {
+            role: "viewer",
+            roomId:
+              finalRoomId,
+          };
 
-        setRoomId(
-          finalRoomId
+        /*
+         * Immediately expose Viewer
+         * role to React.
+         */
+        setRole(
+          "viewer",
         );
 
-        setError(null);
+        setRoomId(
+          finalRoomId,
+        );
 
-        setLastMessage(null);
+        setError(
+          null,
+        );
 
-        setPeerCount(0);
+        setLastMessage(
+          null,
+        );
+
+        setRemoteStream(
+          null,
+        );
+
+        setPeerCount(
+          0,
+        );
 
         console.log(
           "[WebRTC Hook] Starting VIEWER:",
-          finalRoomId
+          finalRoomId,
         );
 
         try {
@@ -400,38 +587,142 @@ export function useWebRTC(
             DEFAULT_SIGNALING_URL,
             finalRoomId,
             false,
-            null
+            null,
           );
 
-          setRole("viewer");
+          setRole(
+            "viewer",
+          );
 
           setRoomId(
-            finalRoomId
+            finalRoomId,
           );
         } catch (err) {
-          setRole(null);
+          lastConnectionRef.current =
+            null;
 
-          setRoomId(null);
+          setRole(
+            null,
+          );
 
-          setPeerCount(0);
+          setRoomId(
+            null,
+          );
+
+          setPeerCount(
+            0,
+          );
+
+          setRemoteStream(
+            null,
+          );
 
           const message =
             err instanceof Error
               ? err.message
               : "Unable to join WebRTC room.";
 
-          setError(message);
+          setError(
+            message,
+          );
 
           throw err;
         }
       },
-      []
+      [],
     );
 
   /*
-   * ============================================================
-   * LEAVE
-   * ============================================================
+   * ==========================================================
+   * RECONNECT
+   * ==========================================================
+   */
+
+  const reconnect =
+    useCallback(
+      async () => {
+        const previous =
+          lastConnectionRef.current;
+
+        const controller =
+          controllerRef.current;
+
+        if (!controller) {
+          throw new Error(
+            "WebRTC controller is not ready.",
+          );
+        }
+
+        if (!previous) {
+          throw new Error(
+            "No previous WebRTC connection is available.",
+          );
+        }
+
+        console.log(
+          "[WebRTC Hook] Reconnecting:",
+          previous.role,
+          previous.roomId,
+        );
+
+        /*
+         * Fully close the old peer/socket.
+         */
+        await controller.disconnect();
+
+        /*
+         * Reset transient connection state.
+         *
+         * Preserve role and room through
+         * the saved connection object.
+         */
+        setStatus(
+          "idle",
+        );
+
+        setPeerCount(
+          0,
+        );
+
+        setRemoteStream(
+          null,
+        );
+
+        setLastMessage(
+          null,
+        );
+
+        setError(
+          null,
+        );
+
+        /*
+         * Reconnect using exactly the
+         * same role and room.
+         */
+        if (
+          previous.role ===
+          "host"
+        ) {
+          await startHost(
+            previous.roomId,
+          );
+        } else {
+          await joinRoom(
+            previous.roomId,
+          );
+        }
+      },
+      [
+        startHost,
+        joinRoom,
+      ],
+    );
+
+  /*
+   * ==========================================================
+   * LEAVE ROOM
+   * ==========================================================
    */
 
   const leaveRoom =
@@ -445,72 +736,95 @@ export function useWebRTC(
         }
 
         console.log(
-          "[WebRTC Hook] Leaving room"
+          "[WebRTC Hook] Leaving room",
         );
+
+        /*
+         * User explicitly left the room,
+         * so don't preserve this connection
+         * for automatic reconnect.
+         */
+        lastConnectionRef.current =
+          null;
 
         await controller.disconnect();
 
-        setStatus("idle");
+        setStatus(
+          "idle",
+        );
 
-        setRole(null);
+        setRole(
+          null,
+        );
 
-        setRoomId(null);
+        setRoomId(
+          null,
+        );
 
-        setPeerCount(0);
+        setPeerCount(
+          0,
+        );
 
-        setRemoteStream(null);
+        setRemoteStream(
+          null,
+        );
 
-        setLastMessage(null);
+        setLastMessage(
+          null,
+        );
 
-        setError(null);
+        setError(
+          null,
+        );
       },
-      []
+      [],
     );
 
   /*
-   * ============================================================
+   * ==========================================================
    * SEND JSON
-   * ============================================================
+   * ==========================================================
    */
 
   const sendJSON =
     useCallback(
       (data: unknown) => {
         controllerRef.current?.sendJSON(
-          data
+          data,
         );
       },
-      []
+      [],
     );
 
   /*
-   * ============================================================
+   * ==========================================================
    * BACKWARD-COMPATIBLE START
-   *
-   * This lets components that previously used
-   * start() continue to work.
-   * ============================================================
+   * ==========================================================
    */
 
   const start =
     useCallback(
       async () => {
-        if (role === "viewer") {
+        if (
+          role ===
+          "viewer"
+        ) {
           if (!roomId) {
             throw new Error(
-              "Room ID is required."
+              "Room ID is required.",
             );
           }
 
           await joinRoom(
-            roomId
+            roomId,
           );
 
           return;
         }
 
         await startHost(
-          roomId ?? undefined
+          roomId ??
+            undefined,
         );
       },
       [
@@ -518,13 +832,13 @@ export function useWebRTC(
         roomId,
         joinRoom,
         startHost,
-      ]
+      ],
     );
 
   /*
-   * ============================================================
+   * ==========================================================
    * BACKWARD-COMPATIBLE STOP
-   * ============================================================
+   * ==========================================================
    */
 
   const stop =
@@ -532,41 +846,33 @@ export function useWebRTC(
       async () => {
         await leaveRoom();
       },
-      [leaveRoom]
+      [leaveRoom],
     );
 
   /*
-   * ============================================================
+   * ==========================================================
    * RETURN
-   * ============================================================
+   * ==========================================================
    */
 
   return {
     status,
-
     role,
-
     roomId,
-
     peerCount,
-
     remoteStream,
-
     lastMessage,
-
     error,
 
     start,
-
     stop,
 
     sendJSON,
 
     startHost,
-
     joinRoom,
-
     leaveRoom,
+    reconnect,
 
     createRoomId,
   };
